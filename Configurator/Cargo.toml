@@ -19,6 +19,7 @@ once_cell = "*"
 winapi = { version = "0.3", features = ["std", "d3d9", "d3d9types", "wtypes", "wtypesbase", "winuser"] }
 rust_decimal = "1.37.1"
 rust_decimal_macros = "1.37.1"
+bevy_reflect ="*"
 [build-dependencies]
 cbindgen = "0.28.0"
 embed-resource = "*"

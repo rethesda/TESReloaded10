@@ -1,2 +1,3 @@
-Partial or partially invalid configuration found. Maybe older version?
-Backup Configuration file to "./shader.ini.bak"
+Cannot open Configuration file "./test.ini"  File non trovato. (os error 2)
+Cannot open Configuration file "./effect.ini"  File non trovato. (os error 2)
+Cannot open Configuration file "./shader.ini"  File non trovato. (os error 2)

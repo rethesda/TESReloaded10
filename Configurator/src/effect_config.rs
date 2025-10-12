@@ -1,3 +1,4 @@
+use bevy_reflect::Reflect;
 #[allow(non_snake_case)]
 
 use serde::{Serialize, Deserialize};
@@ -5,7 +6,7 @@ use serde_deserialize_over::DeserializeOver;
 
 //TODO SPlit config into multiple files
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct BloodLens{
     Chance : u32,
@@ -23,7 +24,7 @@ impl Default for BloodLens{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct AmbientOcclusionInner{
 	Enabled : bool,
@@ -37,8 +38,7 @@ pub struct AmbientOcclusionInner{
 	BlurRadiusMultiplier : f64
 }
 
-
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct AmbientOcclusion{
@@ -55,8 +55,7 @@ impl Default for AmbientOcclusion{
 	    Self { Exterior: exterior, Interior:  interior }
 	}
 }
-
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct Bloom{
@@ -75,7 +74,7 @@ impl  Default for Bloom {
 	}
 } 
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct GodRays{
@@ -100,7 +99,7 @@ impl  Default for GodRays {
 	}
 } 
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct WaterLens {
@@ -119,7 +118,7 @@ impl Default for WaterLens{
 
 
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct SnowAccumulation {
@@ -138,7 +137,7 @@ impl Default for SnowAccumulation {
 }
 
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct WetWorld {
@@ -157,7 +156,7 @@ impl Default for  WetWorld {
 	}
 }			
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct LowHF{
@@ -176,7 +175,7 @@ impl Default for  LowHF {
 }
 
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct DepthOfFieldInner{
@@ -192,7 +191,7 @@ pub struct DepthOfFieldInner{
 	NearBlurCutOff : f64
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct DepthOfField{
@@ -214,7 +213,7 @@ impl Default for DepthOfField {
 	}
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct Cinema {
@@ -229,7 +228,7 @@ impl Default for Cinema {
 	}
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct MotionBlurInner{
@@ -240,7 +239,7 @@ pub struct MotionBlurInner{
 	BlurCutOff : f64
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct MotionBlur {
@@ -258,7 +257,7 @@ impl Default for MotionBlur {
 	}
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct Sharpening {
@@ -274,7 +273,7 @@ impl Default for Sharpening {
 	}
 }
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[allow(non_snake_case)]
 pub struct SpecularInner{
 	Strength : f64,
@@ -284,7 +283,7 @@ pub struct SpecularInner{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[allow(non_snake_case)]
 pub struct Specular {
 	#[deserialize_over]
@@ -302,7 +301,7 @@ impl Default for Specular{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[allow(non_snake_case)]
 pub struct VolumetricFog{
 	Exponent : f64,
@@ -318,7 +317,7 @@ impl Default for VolumetricFog  {
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[allow(non_snake_case)]
 pub struct Coloring{
 	Strength : f64,
@@ -346,7 +345,7 @@ impl Default for Coloring  {
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Serialize, Deserialize,DeserializeOver, Debug,Reflect)]
 #[allow(non_snake_case)]
 pub struct Effects{
 	#[deserialize_over]

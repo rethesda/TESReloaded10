@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
+use bevy_reflect::Reflect;
 use fmt::Formatter;
 use serde::ser::SerializeSeq;
 use std::ffi::{c_void, CStr};
+use std::fmt::Display;
 use std::{fmt, ptr};
 use serde::de::{Deserializer, Error, Visitor};
 use serde::de::Deserialize;
@@ -107,7 +109,8 @@ pub struct NulError(pub usize, pub Vec<u8>);
 TODO create a FFI API for SysString manipulations
   */
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug,Reflect)]
+#[reflect(opaque)]
 pub struct SysString{
      data : *mut libc::c_char,
      length: usize,
@@ -179,6 +182,24 @@ impl <T> From<T> for SysString where T : AsRef<CStr>{
     }
 }
 
+impl  Default for SysString{
+    fn default() -> Self {
+        SysString::new_emtpy()
+    }
+}
+
+impl Display for SysString{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+         write!(f, "{}",String::from_utf8(self.box_to_vector()).expect("Invalid UTF8"))
+    }
+}
+
+impl Clone for SysString{
+    fn clone(&self) -> Self {
+        SysString::new(self.box_to_vector()).unwrap()
+    }
+}
+
 impl Drop for SysString{
     fn drop(&mut self) {
         unsafe {
@@ -206,7 +227,9 @@ impl Serialize for SysString {
     }
 }
 
+//TODO THESE ARE FAKE
 unsafe impl Sync for SysString{}
+unsafe impl Send for SysString{}
 
 struct SysStringVisitor;
 impl <'de> Visitor<'de> for SysStringVisitor {

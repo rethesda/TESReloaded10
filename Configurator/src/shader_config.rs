@@ -1,10 +1,11 @@
 #![allow(non_snake_case)]
+use bevy_reflect::Reflect;
 use serde::{Serialize, Deserialize};
 use serde_deserialize_over::DeserializeOver;
 
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowStruct{
 	#[deserialize_over]
@@ -26,7 +27,7 @@ While current NV shadows are post processing, it started as a forward render mod
 Keep the Shadows info here
 */
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowsExteriorShaderStruct{
 	Quality : u32,
@@ -40,7 +41,7 @@ impl Default for ShadowsExteriorShaderStruct{
     }
 }
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowsInteriorShaderStruct{
 	Quality : u32,
@@ -53,7 +54,7 @@ impl Default for ShadowsInteriorShaderStruct{
     }
 }
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Rain{
 	DepthStep : f64,
@@ -67,7 +68,7 @@ impl Default for Rain{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Snow{
 	DepthStep : f64,
@@ -82,7 +83,7 @@ impl Default for Snow{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Water{
 	choppiness : f64,
@@ -108,7 +109,7 @@ impl Default for Water {
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct HDR {
 	ToneMapping : f64,
@@ -124,7 +125,7 @@ impl Default for HDR {
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct POM{
 	HeightMapScale : f64,
@@ -139,7 +140,7 @@ impl Default for POM{
 }
 			
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Skin{
 	Attenuation : f64,
@@ -158,7 +159,7 @@ impl Default for Skin{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Terrain{
 	DistantNoise : f64,
@@ -174,7 +175,7 @@ impl Default for Terrain {
 }
 			
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Grass {
 	WindEnabled : bool,
@@ -195,7 +196,7 @@ impl Default for Grass {
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct Shaders{
 	#[deserialize_over]

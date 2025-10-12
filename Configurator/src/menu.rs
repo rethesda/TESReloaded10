@@ -2,6 +2,7 @@
 #![allow(non_upper_case_globals)]
 //#![allow(nonstandard_style)]
 
+use bevy_reflect::{Enum, NamedField, PartialReflect, Reflect, Struct};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Deserialize;
@@ -15,6 +16,7 @@ use winapi::um::wingdi::{FW_NORMAL,DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, ANTIALIA
 use winapi::shared::windef::{HDC,LPRECT,RECT};
 use winapi::um::winuser::{SetRect,DT_CENTER, DT_LEFT,DT_RIGHT};
 
+use std::any::TypeId;
 use std::marker::PhantomData;
 use std::ptr;
 use std::ffi::CString;
@@ -23,6 +25,10 @@ use winapi::DEFINE_GUID;
 
 use once_cell::sync::Lazy;
 use toml::{Table, Value};
+use crate::effect_config::Effects;
+use crate::main_config::Config;
+use crate::shader_config::Shaders;
+use crate::sys_string::SysString;
 use crate::{log, CONFIG_TABLE, SHADERS_TABLE, EFFECTS_TABLE, CONFIG, SHADERS, EFFECTS, get_static_ref, static_mut_insert, get_static_ref_const};
 
 #[link(name = "d3dx9")]
@@ -401,18 +407,70 @@ pub fn RenderHeader() -> MenuRect{
 	rect
 }
 
+fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, zone : RenderingZone, rect : &mut MenuRect){
+	match namedField.type_info().unwrap(){
+		bevy_reflect::TypeInfo::Struct(_struct_info) => {
+			rect.draw(namedField.name(), Align::Left ,zone);
+		}
+		bevy_reflect::TypeInfo::TupleStruct(tuple_struct_info) => todo!(),
+		bevy_reflect::TypeInfo::Tuple(tuple_info) => todo!(),
+		bevy_reflect::TypeInfo::List(list_info) => todo!(),
+		bevy_reflect::TypeInfo::Array(array_info) => {
+			rect.draw_opt(namedField.name(), "<ARRAY>",  Align::Left ,zone);
+		}
+		bevy_reflect::TypeInfo::Map(map_info) => todo!(),
+		bevy_reflect::TypeInfo::Set(set_info) => todo!(),
+		bevy_reflect::TypeInfo::Enum(enum_info) => {
+			rect.draw_opt(namedField.name(), "<ENUM>",  Align::Left ,zone);
+		},
+		bevy_reflect::TypeInfo::Opaque(opaque_info) => {
+			let id = opaque_info.type_id();
+			log(format!("{:?}", namedField));
+			let v : String = if id  == TypeId::of::<u32>() {
+				field.try_downcast_ref::<u32>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<u8>() {
+				field.try_downcast_ref::<u8>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<u16>() {
+				field.try_downcast_ref::<u16>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<u64>() {
+				field.try_downcast_ref::<u64>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<bool>() {
+				field.try_downcast_ref::<bool>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<f32>() {
+				field.try_downcast_ref::<f32>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<f64>() {
+				field.try_downcast_ref::<f64>().unwrap().to_string()
+			}
+			else if id  == TypeId::of::<SysString>() {
+				field.try_downcast_ref::<SysString>().unwrap().to_string()
+			}
+			else {
+				"<opaque>".to_owned()
+			};
+			rect.draw_opt(namedField.name(), &v,  Align::Left ,zone);
+		}
+	}
+}
+
 pub fn RenderMenu(width: i32, height : i32){
 	let mut rect = RenderHeader();
-	let configtable = match get_global_menu_state().get_active_mainconf() {
-		MenuSelected::Main => get_static_ref_const(&raw const CONFIG_TABLE),
-		MenuSelected::Shaders => get_static_ref_const(&raw const SHADERS_TABLE),
-		MenuSelected::Effects => get_static_ref_const(&raw const EFFECTS_TABLE),
+	let configtable : &dyn Struct  = match get_global_menu_state().get_active_mainconf() {
+		MenuSelected::Main => get_static_ref_const::<Config>(&raw const CONFIG) as &dyn Struct,
+		MenuSelected::Shaders => get_static_ref_const::<Shaders>(&raw const SHADERS) as &dyn Struct,
+		MenuSelected::Effects => get_static_ref_const::<Effects>(&raw const EFFECTS) as &dyn Struct,
 	};
 	
 	rect.next_row();
 	rect.save();
-	for (key, value) in configtable {
-		rect.draw(key.as_str(), Align::Left, RenderingZone::ActiveFirst);
+	let type_info = configtable.get_represented_type_info().unwrap().as_struct().unwrap();
+	for namedField in  type_info.iter() {
+		rect.draw(namedField.name(), Align::Left, RenderingZone::ActiveFirst);
 		rect.next_row();
 	}
 	rect.restore();
@@ -420,18 +478,15 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.save();
 	let first = 	get_global_menu_state().get_active_config(RenderingZone::ActiveFirst);
 	if !first.is_empty(){
-		match configtable.get(first){
+		match configtable.field(first){
 			None => {
 				log(format!("[ERROR] Configuration Key {} not found", first));
 			}
 			Some(val) => {
-				for (key,val) in val.as_table().unwrap() {
-					if val.is_table(){
-						rect.draw(key.as_str(), Align::Left ,RenderingZone::ActiveSecond);
-					}
-					else {
-						rect.draw_opt(key.as_str(), &val.to_string(), Align::Left ,RenderingZone::ActiveSecond);
-					}
+				let stru = val.reflect_ref().as_struct().unwrap();
+				let type_first_selected = stru.get_represented_type_info().unwrap().as_struct().unwrap();
+				for  (field, namedField) in stru.iter_fields().zip(type_first_selected.iter()) {
+					render_reflected_struct(	namedField, field, RenderingZone::ActiveSecond, &mut rect );
 					rect.next_row();
 				}
 			}
@@ -442,22 +497,24 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.save();
 	let second = get_global_menu_state().get_active_config(RenderingZone::ActiveSecond);
 	if !second.is_empty(){
-		match configtable.get(first).unwrap().get(second) {
+		match configtable.field(first).unwrap().reflect_ref().as_struct().unwrap().field(second) {
 			None => {
 				log(format!("[ERROR] Configuration Key {} not found", second));
 			}
 			Some(val) => {
-				if val.is_table(){ 
-		//		log(format!("{} {}" , val, val.type_str()));
-					for (key,val) in val.as_table().unwrap() {
-						rect.draw_opt(key.as_str(), &val.to_string(), Align::Left ,RenderingZone::ActiveThird);
-						rect.next_row();
-					}
+				match  val.reflect_ref().as_struct() {
+					Ok(structure) =>{
+						let type_first_selected = structure.get_represented_type_info().unwrap().as_struct().unwrap();
+						for  (field, namedField) in structure.iter_fields().zip(type_first_selected.iter()) {
+							render_reflected_struct(	namedField, field, RenderingZone::ActiveThird, &mut rect );
+							rect.next_row();
+						}
+					},
+					Err(_) => {},
 				}
 			}
 		}
 	}
-
 }
 
 #[repr(C)]
@@ -469,7 +526,7 @@ pub enum OperationSetting {
 pub fn ChangeCurrentSetting(op : OperationSetting) -> Option<String> {
 	if get_global_menu_state().is_terminal() {
 		let conf = get_global_menu_state().get_active_mainconf();
-		let configtable  : &mut Table =  {
+		let configtable  : &mut dyn Struct =  {
 			match conf {
 				MenuSelected::Main => get_static_ref(&raw mut CONFIG_TABLE),
 				MenuSelected::Shaders => get_static_ref(&raw mut SHADERS_TABLE),

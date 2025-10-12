@@ -3,10 +3,10 @@ extern crate embed_resource;
 use std::env;
 use std::path::PathBuf;
 
-fn main() {
+fn main()  {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    let package_name = env::var("CARGO_PKG_NAME").unwrap();
+    let _package_name = env::var("CARGO_PKG_NAME").unwrap();
 	let path_file = target_dir().parent().unwrap().join("../TESReloaded/Core/SettingStructure.h");
     let output_file = path_file
         .display()
@@ -19,7 +19,7 @@ fn main() {
           Err(_) => println!("Unable to generate proper bindings"),
 	   };
 
-    embed_resource::compile("Configurator.rc", embed_resource::NONE);
+    let _ = embed_resource::compile("Configurator.rc", embed_resource::NONE);
 
 }
  

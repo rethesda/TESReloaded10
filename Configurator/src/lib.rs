@@ -14,8 +14,8 @@ pub mod menu;
 use std::ffi::CString;
 use std::path::Path;
 use std::fs::File;
-use std::io;
-
+use std::{io, panic};
+use std::panic::catch_unwind;
 use std::ptr;
 use std::io::{Read, Write};
 use cfile::CFile;
@@ -258,7 +258,14 @@ pub extern "C" fn WriteVersionString(width: i32, height : i32, string : *const i
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn RenderConfigurationMenu(width: i32, height : i32){ menu::RenderMenu(width, height );}
+pub extern "C" fn RenderConfigurationMenu(width: i32, height : i32){
+	panic::set_hook(Box::new(|pi| {
+		log(pi.to_string());
+	} ));
+	catch_unwind( ||  {
+		menu::RenderMenu(width, height );
+	} );
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn MoveActiveNode(mov : MoveCursor){
@@ -301,11 +308,10 @@ pub extern "C" fn SaveConfigurations(){
 
 	let path_effect = base_shader.clone() + "/Effects/Effects.ini";
 	let path_shader = base_shader + "/Shaders/Shaders.ini";
-	unsafe{
-		write_config_to_file(path_main, get_static_ref_const(&raw const CONFIG));
-		write_config_to_file(path_shader, get_static_ref_const(&raw const SHADERS));
-		write_config_to_file(path_effect, get_static_ref_const(&raw const EFFECTS));
-	}
+	write_config_to_file(path_main, get_static_ref_const(&raw const CONFIG));
+	write_config_to_file(path_shader, get_static_ref_const(&raw const SHADERS));
+	write_config_to_file(path_effect, get_static_ref_const(&raw const EFFECTS));
+
 }
 
 #[unsafe(no_mangle)]

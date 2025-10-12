@@ -1,11 +1,12 @@
 #![allow(non_snake_case)]
 use std::ffi::CString;
 use crate::sys_string::{SysString};
+use bevy_reflect::Reflect;
 use serde::{Serialize, Deserialize};
 use serde_deserialize_over::DeserializeOver;
 
 /*Configuration for the Main Configuration file*/
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct Config{
@@ -57,7 +58,7 @@ impl Default for Config{
     }
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct MainStruct {
@@ -90,7 +91,7 @@ impl Default for MainStruct{
     }
 }
 /*Some settings are related to OR only, while CameraMode will be removed from NVR*/
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub	struct DevelopStruct {
@@ -112,7 +113,7 @@ impl Default for DevelopStruct{
 
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub	struct LowHFSoundStruct {
@@ -132,7 +133,7 @@ impl Default for LowHFSoundStruct{
         }
     }
 }
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub	struct FlyCamStruct {
@@ -154,7 +155,7 @@ impl Default for FlyCamStruct{
         }
     }
 }
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct ShadersStruct {
@@ -184,7 +185,7 @@ impl Default for ShadersStruct{
         }
     }
 }
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 struct EffectsStruct {
@@ -239,7 +240,7 @@ impl Default for EffectsStruct{
     }
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct MenuStruct {
@@ -291,7 +292,7 @@ impl Default for MenuStruct{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct SleepingModeStruct{
     Enabled : bool,
@@ -308,7 +309,7 @@ impl Default for SleepingModeStruct{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowFormsStruct {
 	Activators : bool,
@@ -337,7 +338,7 @@ impl Default for ShadowFormsStruct{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowsExteriorStruct{
 	Enabled : bool,
@@ -366,7 +367,7 @@ impl Default for ShadowsExteriorStruct{
 
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowsInteriorStruct{
 	Enabled : bool,
@@ -390,7 +391,7 @@ impl Default for ShadowsInteriorStruct{
     }
 }
 
-#[derive(Serialize, Deserialize,DeserializeOver, Debug)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct CullingEngine{
@@ -413,7 +414,7 @@ impl Default for CullingEngine{
 }
 
 #[repr(C)]
-#[derive(Debug,Serialize,Deserialize,DeserializeOver)]
+#[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct WaterEngine{
     ReflectionMapSize : u16,
