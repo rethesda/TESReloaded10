@@ -203,7 +203,7 @@ void ShadowManager::SelectGeometry(NiGeometry* Geo, bool IsFaceGen) {
 	BSShaderProperty* ShaderProperty = (BSShaderProperty*)Geo->GetProperty(NiProperty::PropertyType::kType_Shade);
 	bool haveLightingProperty = ShaderProperty && ShaderProperty->IsLightingProperty();
 	NiTexture* materialText = nullptr;
-	if (haveLightingProperty) { /*Leaves don't have a shade property or is not a LightingProperty*/
+	if (haveLightingProperty) { 
 		BSShaderPPLightingProperty* lightProperty = (BSShaderPPLightingProperty*)ShaderProperty;
 		materialText = lightProperty->textures[0]  ? *lightProperty->textures[0] : nullptr;
 		/*Oblivion: Only seen 0.0 or 0.208. IS the structure actually corrrect?*/
@@ -226,7 +226,8 @@ void ShadowManager::SelectGeometry(NiGeometry* Geo, bool IsFaceGen) {
 		return;
 	}
 	if(Geo->geomData->BuffData){
-		if (Geo->m_parent->m_pcName && !memcmp(Geo->m_parent->m_pcName, "Leaves", 6)) speedtreeObjects.push_back(std::make_tuple(Geo, visibility));
+		//Some speedTree have the Leaves node but no proper SpeedTree Leaves. These are trees with static leaves, that instead of having a SpeedTreeLeafShaderProeprty have a Lighting30ShaderProperty 
+		if (Geo->m_parent->m_pcName && !haveLightingProperty && !memcmp(Geo->m_parent->m_pcName, "Leaves", 6)) speedtreeObjects.push_back(std::make_tuple(Geo, visibility));
 		else if (alphaObject  && materialText) alphaObjects.push_back(std::make_tuple(Geo, visibility));
 		else normalObjects.push_back(std::make_tuple(Geo, visibility));
 	}
@@ -1064,10 +1065,10 @@ void ShadowManager::RenderSpeedTreePass(std::vector<std::tuple<NiGeometry*, UInt
 			TheShaderManager->ShaderConst.Shadow.Data.x = 2.0f; // Type of geo (0 normal, 1 actors (skinned), 2 speedtree leaves)
 			TheShaderManager->ShaderConst.Shadow.Data.y = 0.0f; // Alpha control
 			TheRenderManager->CreateD3DMatrix(&TheShaderManager->ShaderConst.ShadowMap.ShadowWorld, &Geo->m_worldTransform);
-			SpeedTreeLeafShaderProperty* STProp = (SpeedTreeLeafShaderProperty*)Geo->GetProperty(NiProperty::PropertyType::kType_Shade);
+			SpeedTreeLeafShaderProperty* STProp = (SpeedTreeLeafShaderProperty*) Geo->GetProperty(NiProperty::PropertyType::kType_Shade);
+			NiDX9RenderState* RenderState = TheRenderManager->renderState;
 			BSTreeNode* Node = (BSTreeNode*)Geo->m_parent->m_parent;
 			NiDX9SourceTextureData* Texture = (NiDX9SourceTextureData*)Node->TreeModel->LeavesTexture->rendererData;
-			NiDX9RenderState* RenderState = TheRenderManager->renderState;
 			int StartIndex = 0;
 			int PrimitiveCount = 0;
 			NiGeometryData* ModelData = Geo->geomData;
@@ -1080,9 +1081,9 @@ void ShadowManager::RenderSpeedTreePass(std::vector<std::tuple<NiGeometry*, UInt
 			Device->SetVertexShaderConstantF(65, Pointers::ShaderParams::RockParams, 1);
 			Device->SetVertexShaderConstantF(66, Pointers::ShaderParams::RustleParams, 1);
 			Device->SetVertexShaderConstantF(67, Pointers::ShaderParams::WindMatrixes, 16);
-
 			Device->SetVertexShaderConstantF(83, STProp->leafData->leafBase, 48);
 			RenderState->SetTexture(0, Texture->dTexture);
+		
 			RenderState->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP, false);
 			RenderState->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP, false);
 			RenderState->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT, false);
