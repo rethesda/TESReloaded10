@@ -1,5 +1,4 @@
-use std::ffi::CString;
-use crate::sys_string::SysString;
+#![allow(non_snake_case)]
 use serde::{Serialize, Deserialize};
 use serde_deserialize_over::DeserializeOver;
 

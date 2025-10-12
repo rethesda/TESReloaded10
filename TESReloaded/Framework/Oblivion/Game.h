@@ -613,7 +613,7 @@ public:
 	virtual void	Unk_30();	// 30
 	virtual void	Unk_31();
 	virtual void	Unk_32();
-	virtual bool	Unk_33(TESObjectREFR* refr0, TESObjectREFR* refr1, UInt32 unk2); // related to activate, refr1 is activating refr, refr0 is a reference to this TESForm being activated, seen unk2 == 0
+	virtual bool	ActivateActionForReference(TESObjectREFR* refr0, TESObjectREFR* refr1, UInt32 unk2);// related to activate, refr1 is activating refr, refr0 is a reference to this TESForm being activated, seen unk2 == 0.  In TESFurniture case, the function seems to check Player and the TESfurnitre This object isn't  used at all.
 	virtual char*	GetName();	// not sure which objects this works on, doesn't seem to work on player or random objects
 	virtual char*	GetEditorName(); // returns nothing at runtime (return the editorname for TESObjectCELL)
 	virtual bool	SetEditorName(const char* name);
@@ -1511,6 +1511,7 @@ public:
 };
 assert(sizeof(TESObjectCELL) == 0x058);
 
+class ExtraContainerChangesEntryData; //TODO
 class BaseProcess {
 public:
 	enum {
@@ -1571,24 +1572,24 @@ public:
 	virtual bool							Unk_2F();
 	virtual void							Unk_30(UInt32 arg0);
 	virtual bool							Unk_31();
-	virtual TESObjectREFR*					GetUnk02C();
-	virtual void							SetUnk02C(TESObjectREFR* obj);
+	virtual TESObjectREFR*					GetFollow();
+	virtual void							SetFollow(TESObjectREFR* obj);
 	virtual UInt32							Unk_34();
 	virtual void							Unk_35(UInt32 arg0);
 	virtual void							Unk_36(UInt32 arg0);
 	virtual UInt32							Unk_37();
 	virtual void							Unk_38(UInt32 arg0);
-	virtual UInt32							Unk_39(UInt32 arg0);
-	virtual UInt32							Unk_3A(UInt32 arg0);
-	virtual InventoryChanges::EntryData*	GetEquippedWeaponData(bool arg0);
-	virtual UInt32							Unk_3C(UInt32 arg0);
-	virtual InventoryChanges::EntryData*	GetEquippedAmmoData(bool arg0);
-	virtual UInt32							Unk_3E();
-	virtual void							Unk_3F(UInt32 arg0);
-	virtual bool							Unk_40(UInt32 arg0, UInt32 arg1);
-	virtual bool							Unk_41(UInt32 arg0);
-	virtual bool							Unk_42(UInt32 arg0);
-	virtual bool							Unk_43(UInt32 arg0);
+	virtual UInt32	Unk_39(UInt32 arg0) ;//Facegen something
+	virtual ExtraContainerChangesEntryData* GetEquippedWeaponData(bool arg0) ;
+	virtual ExtraContainerChangesEntryData* GetEquippedLightData(bool arg0);
+	virtual ExtraContainerChangesEntryData* GetEquippedAmmoData(bool arg0) ;
+	virtual ExtraContainerChangesEntryData* GetEquippedShieldData(bool arg0) ;
+	virtual bool	GetAV(UInt32 arg0, UInt32 arg1) ;
+	virtual bool	SetAV(UInt32 arg0) ;
+	virtual bool	SetEquippedWeaponData(UInt32 arg0) ;
+	virtual UInt32	SetEquippedLightData(UInt32 arg0) ;
+	virtual UInt32	setEquippedAmmoData(UInt32 arg0);
+	virtual bool	SetEquippedShieldData(UInt32 arg0) ;
 	virtual bool							Unk_44(UInt32 arg0);
 	virtual UInt32							Unk_45(UInt32 arg0);
 	virtual UInt32							Unk_46(UInt32 arg0);
@@ -1740,7 +1741,7 @@ public:
 	virtual void					Unk_D8();
 	virtual void					Unk_D9();
 	virtual UInt8					GetSitSleepState();
-	virtual void					Unk_DB();
+	virtual void					SetSitSleepState(Actor *actor, signed int sleepState , TESObjectREFR *fornititure, UInt8 unk124);
 	virtual void					Unk_DC();
 	virtual TESObjectREFR*			GetFurniture();
 	virtual void					Unk_DE();
@@ -1755,12 +1756,12 @@ public:
 	virtual void	Unk_E7();
 	virtual void	Unk_E8();
 	virtual void	Unk_E9();
+	virtual void	Unk_EA();
 	virtual float	GetLightAmount(Actor* actor, UInt32 unk1);
-	virtual void	Unk_EB();
-	virtual void*	GetDetectionState(Actor* target);	// returns HighProcess::DetectionList::Data *
-	virtual void	Unk_ED();
-	virtual void	Unk_EE();
-	virtual void	Unk_EF();
+	virtual void*	GetDetectionState(Actor* target);	// returns HighProcess::Detect nList::Data *
+	virtual UInt32	Unk_ED(); //Return 0 in HighProcess
+	virtual TESObjectREFR*	 GetUnk030(); //What reference is this?
+	virtual void	SetUnk030(TESObjectREFR* unk);
 	virtual void	Unk_F0();
 	virtual void	Unk_F1();
 	virtual void	Unk_F2();
@@ -2470,7 +2471,7 @@ public:
 	};
 
 	virtual SInt32	GetInfamy();
-	virtual void	Resurrect(UInt8 Unk1, UInt8 Unk2, UInt8 Unk3);
+	virtual void	Resurrect(UInt32 Unk1, UInt8 Unk2, bool Unk3);
 	virtual void	Unk_84();
 	virtual void	Unk_85();
 	virtual void	Unk_86();

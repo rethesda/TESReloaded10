@@ -1,3 +1,7 @@
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+//#![allow(nonstandard_style)]
+
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Deserialize;
@@ -19,10 +23,10 @@ use winapi::DEFINE_GUID;
 
 use once_cell::sync::Lazy;
 use toml::{Table, Value};
-use crate::{log, CONFIG_TABLE, SHADERS_TABLE, EFFECTS_TABLE, CONFIG, SHADERS, EFFECTS};
+use crate::{log, CONFIG_TABLE, SHADERS_TABLE, EFFECTS_TABLE, CONFIG, SHADERS, EFFECTS, get_static_ref, static_mut_insert, get_static_ref_const};
 
 #[link(name = "d3dx9")]
-extern "system" {
+unsafe extern "system" {
 	pub fn  D3DXCreateFontA(device: LPDIRECT3DDEVICE9, Height : i32, Width : i32, Weight: i32, MipLevels: UINT, Italic: bool, CharSet: DWORD ,OutputPrecision: DWORD, Quality: DWORD, PitchAndFamily: DWORD,pFacename : *const i8, ppfont : *mut *mut  ID3DXFont) -> HRESULT;
 }
 
@@ -49,7 +53,7 @@ interface ID3DXFont(ID3DXFontVtbl): IUnknown(IUnknownVtbl) {
 	fn OnResetDevice() -> HRESULT,
 }}
 
-pub static mut FontRenderer : Option<*mut ID3DXFont> = None;
+pub static mut FontRenderer : *mut ID3DXFont = ptr::null_mut();
 
 
 pub fn CreateFontRender(device: LPDIRECT3DDEVICE9) {
@@ -61,7 +65,7 @@ pub fn CreateFontRender(device: LPDIRECT3DDEVICE9) {
 	
 	log(format!("Create font renderer {}  {:?}", res, font));
 	unsafe {
-		FontRenderer.replace(font);
+		FontRenderer  = font;
 	}	
 } 
 
@@ -77,7 +81,7 @@ fn DrawText(renderer : *mut ID3DXFont, rect: &mut RECT, text : *const i8, color 
 	    Align::Right => DT_RIGHT,
 	};
 	unsafe{
-		(renderer.as_ref().unwrap().lpVtbl.as_ref().unwrap().DrawTextA)(renderer, ptr::null(), text, -1, rect, align, D3DCOLOR_XRGB(color.0,color.1,color.2));
+		(renderer.as_ref().unwrap().lpVtbl.as_ref().unwrap().DrawTextA)(renderer, ptr::null(), text, -1, rect, align, xrgb);
 	}
 }
 
@@ -147,12 +151,10 @@ impl MenuState {
 	}
 	
 	pub fn get_active_table(&self) -> &Table {
-		unsafe{
-			match self.active_config {
-				MenuSelected::Main => CONFIG_TABLE.as_ref().unwrap(),
-				MenuSelected::Shaders => SHADERS_TABLE.as_ref().unwrap(),
-				MenuSelected::Effects => EFFECTS_TABLE.as_ref().unwrap()
-			}
+		match self.active_config {
+			MenuSelected::Main => get_static_ref_const(&raw const CONFIG_TABLE),
+			MenuSelected::Shaders => get_static_ref_const(&raw const SHADERS_TABLE),
+			MenuSelected::Effects => get_static_ref_const(&raw const EFFECTS_TABLE)
 		}
 	}
 	
@@ -291,6 +293,24 @@ impl MenuState {
 
 pub static mut MENU_STATE : Lazy<MenuState> = Lazy::new(|| MenuState::new());
 
+pub fn get_active_config_from_global_state(zone : RenderingZone) -> &'static str{
+	unsafe{
+		(& *(&raw const  MENU_STATE)).get_active_config(zone)
+	}
+}
+
+pub fn get_global_menu_state() -> &'static MenuState{
+	unsafe{
+		& *(&raw const MENU_STATE)
+	}
+}
+
+pub fn get_global_menu_state_mut() -> &'static mut MenuState{
+	unsafe{
+		&mut *(&raw mut MENU_STATE)
+	}
+}
+
 struct MenuRect {
 	rect : RECT,
 	save_rect : RECT,
@@ -327,19 +347,13 @@ impl MenuRect {
 	fn is_active_zone(&self, rendering : &RenderingZone) -> bool {
 		match rendering {
 		    RenderingZone::ActiveConfig => {
-				unsafe {
-					MENU_STATE.get_active_config(RenderingZone::ActiveFirst).is_empty()	
-				}
+				get_global_menu_state().get_active_config(RenderingZone::ActiveFirst).is_empty()
 			},
 		    RenderingZone::ActiveFirst => {
-				unsafe {
-					MENU_STATE.get_active_config(RenderingZone::ActiveSecond).is_empty()	
-				}
+				get_global_menu_state().get_active_config(RenderingZone::ActiveSecond).is_empty()
 			},
 		    RenderingZone::ActiveSecond =>  {
-				unsafe {
-					MENU_STATE.get_active_config(RenderingZone::ActiveThird).is_empty()	
-				}
+				get_global_menu_state().get_active_config(RenderingZone::ActiveThird).is_empty()
 			},
 		    RenderingZone::ActiveThird =>  {
 				true
@@ -350,9 +364,7 @@ impl MenuRect {
 	
 	pub fn draw<'a, S : Into<&'a str>>(&mut self, text : S, align : Align, rendering : RenderingZone) {
 		let nulled = CString::new(text.into()).unwrap();
-		let active_node =  self.is_active_zone(&rendering) && unsafe{
-			MENU_STATE.get_active_config(rendering).eq_ignore_ascii_case(nulled.to_str().unwrap())
-		};
+		let active_node =  self.is_active_zone(&rendering) && 	get_global_menu_state().get_active_config(rendering).eq_ignore_ascii_case(nulled.to_str().unwrap());
 		let color = if active_node {(10,240,180)} else {(250,240,180)};
 		DrawText(self.renderer, &mut self.rect, nulled.as_ptr() as *const i8, color , align);
 	}
@@ -361,24 +373,22 @@ impl MenuRect {
 	pub fn draw_opt<'a, S : Into<&'a str>>(&mut self, arg : S, opt : S,  align : Align, rendering : RenderingZone) {
 		let it = arg.into().to_string();
 		let nulled = CString::new(it.clone() + " = " + opt.into()).unwrap();
-		let active_node = self.is_active_zone(&rendering) && unsafe{
-			MENU_STATE.get_active_config(rendering).eq_ignore_ascii_case(it.as_str())
-		};
+		let active_node = self.is_active_zone(&rendering) && get_global_menu_state().get_active_config(rendering).eq_ignore_ascii_case(it.as_str());
 		let color = if active_node {(10,240,180)} else {(250,240,180)};
 		DrawText(self.renderer, &mut self.rect, nulled.as_ptr() as *const i8, color , align);
 	}
 }
 
 pub fn WriteVersionString(width: i32, height : i32, string : *const i8){
-	let font_render = unsafe {FontRenderer.unwrap()};
+	let font_render = unsafe {FontRenderer};
 	let mut rect = NewRect(0, height - TextSize - 10, width, height + TextSize);
 	
 	DrawText(font_render , &mut rect, string ,(250,240,180), Align::Center);
 }
 
 pub fn RenderHeader() -> MenuRect{
-	let font_render = unsafe {FontRenderer.unwrap()};
-	let mut rect = MenuRect::new_with_coords(PositionX, PositionY, PositionX + TitleColumnSize, PositionY + TextSize, font_render);
+
+	let mut rect = MenuRect::new_with_coords(PositionX, PositionY, PositionX + TitleColumnSize, PositionY + TextSize, unsafe{ FontRenderer} );
 	rect.draw("Oblivion Reloaded - Settings", Align::Center, RenderingZone::Version);
 	rect.next_row();
 	rect.save();
@@ -392,14 +402,11 @@ pub fn RenderHeader() -> MenuRect{
 }
 
 pub fn RenderMenu(width: i32, height : i32){
-	let font_render = unsafe {FontRenderer.unwrap().as_ref().unwrap()};
 	let mut rect = RenderHeader();
-	let configtable = unsafe {
-		match MENU_STATE.get_active_mainconf() {
-			MenuSelected::Main => CONFIG_TABLE.as_ref().unwrap(),
-			MenuSelected::Shaders => SHADERS_TABLE.as_ref().unwrap(),
-			MenuSelected::Effects => EFFECTS_TABLE.as_ref().unwrap()
-		}
+	let configtable = match get_global_menu_state().get_active_mainconf() {
+		MenuSelected::Main => get_static_ref_const(&raw const CONFIG_TABLE),
+		MenuSelected::Shaders => get_static_ref_const(&raw const SHADERS_TABLE),
+		MenuSelected::Effects => get_static_ref_const(&raw const EFFECTS_TABLE),
 	};
 	
 	rect.next_row();
@@ -411,9 +418,7 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.restore();
 	rect.next_column();
 	rect.save();
-	let first = unsafe {
-		MENU_STATE.get_active_config(RenderingZone::ActiveFirst)
-	};
+	let first = 	get_global_menu_state().get_active_config(RenderingZone::ActiveFirst);
 	if !first.is_empty(){
 		match configtable.get(first){
 			None => {
@@ -435,9 +440,7 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.restore();
 	rect.next_column();
 	rect.save();
-	let second = unsafe {
-		MENU_STATE.get_active_config(RenderingZone::ActiveSecond)
-	};
+	let second = get_global_menu_state().get_active_config(RenderingZone::ActiveSecond);
 	if !second.is_empty(){
 		match configtable.get(first).unwrap().get(second) {
 			None => {
@@ -464,42 +467,46 @@ pub enum OperationSetting {
 }
 
 pub fn ChangeCurrentSetting(op : OperationSetting) -> Option<String> {
-	if unsafe {MENU_STATE.is_terminal()} {
-		let conf = unsafe {MENU_STATE.get_active_mainconf()};
-		let mut configtable  : &mut Table = unsafe {
+	if get_global_menu_state().is_terminal() {
+		let conf = get_global_menu_state().get_active_mainconf();
+		let configtable  : &mut Table =  {
 			match conf {
-				MenuSelected::Main => CONFIG_TABLE.as_mut().unwrap(),
-				MenuSelected::Shaders => SHADERS_TABLE.as_mut().unwrap(),
-				MenuSelected::Effects => EFFECTS_TABLE.as_mut().unwrap()
+				MenuSelected::Main => get_static_ref(&raw mut CONFIG_TABLE),
+				MenuSelected::Shaders => get_static_ref(&raw mut SHADERS_TABLE),
+				MenuSelected::Effects => get_static_ref(&raw mut EFFECTS_TABLE)
 			}
 		};
-		let first = unsafe { MENU_STATE.get_active_config(RenderingZone::ActiveFirst) };
-		let second = unsafe { MENU_STATE.get_active_config(RenderingZone::ActiveSecond) };
-		let third = unsafe { MENU_STATE.get_active_config(RenderingZone::ActiveThird) };
+		let first = get_active_config_from_global_state(RenderingZone::ActiveFirst);
+		let second = get_active_config_from_global_state(RenderingZone::ActiveSecond);
+		let third = get_active_config_from_global_state(RenderingZone::ActiveThird);
 		let tabled = configtable.get_mut(first).unwrap().as_table_mut().unwrap().get_mut(second).unwrap();
 		let tab : &mut Value = if tabled.is_table(){ tabled.as_table_mut().unwrap().get_mut(third).unwrap() } else {tabled};
 		let modified = match tab {
 			//TODO, this rely on a custom version of the toml crate with custom Value discriminants. We can implement it directly as it's only a serialization between struct and table with no TOML accessor
 			// But for now it seems good enough, not that it break actual TOML serialization and deserialization
-		    Value::Integer(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UInteger(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Int(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UInt(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Short(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UShort(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Byte(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UByte(ref mut cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Float(ref mut cont) => {  if op == OperationSetting::Add { *cont += 0.1 } else { *cont -= 0.1 };  true},
-		    Value::Float32(ref mut cont) => {if op == OperationSetting::Add { *cont += 0.1f32 } else { *cont -= 0.1f32 }; true},
-		    Value::Boolean(ref mut cont) => { *cont = !*cont; true },
+		    Value::Integer(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::UInteger(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::Int(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::UInt(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::Short(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::UShort(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::Byte(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::UByte( cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
+		    Value::Float( cont) => {  if op == OperationSetting::Add { *cont += 0.1 } else { *cont -= 0.1 };  true},
+		    Value::Float32( cont) => {if op == OperationSetting::Add { *cont += 0.1f32 } else { *cont -= 0.1f32 }; true},
+		    Value::Boolean( cont) => { *cont = !*cont; true },
 		    _ => {log(format!("{:?}", tab)); false},
 		};
 		if modified {
-			unsafe{
-				match conf {
-				    MenuSelected::Main => {*CONFIG.as_mut().unwrap() = crate::main_config::Config::deserialize(configtable.clone()).unwrap();},
-				    MenuSelected::Shaders => {*SHADERS.as_mut().unwrap() = crate::shader_config::Shaders::deserialize(configtable.clone()).unwrap();},
-				    MenuSelected::Effects => {*EFFECTS.as_mut().unwrap() = crate::effect_config::Effects::deserialize(configtable.clone()).unwrap();},
+			match conf {
+				MenuSelected::Main => {
+					static_mut_insert(&raw mut CONFIG  ,crate::main_config::Config::deserialize(configtable.clone()).unwrap());
+				},
+				MenuSelected::Shaders => {
+					static_mut_insert(&raw mut SHADERS  ,crate::shader_config::Shaders::deserialize(configtable.clone()).unwrap());
+				},
+				MenuSelected::Effects => {
+					static_mut_insert(&raw mut EFFECTS  ,crate::effect_config::Effects::deserialize(configtable.clone()).unwrap());
 				}
 			}
 			if *conf == MenuSelected::Main {

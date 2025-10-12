@@ -1,5 +1,5 @@
 #![feature(vec_into_raw_parts,const_trait_impl)]
-
+#![allow(non_snake_case)]
 extern crate  memchr;
 extern crate alloc;
 extern crate winapi;
@@ -11,20 +11,15 @@ pub mod shader_config;
 pub mod cfile;
 pub mod menu;
 
-use std::ffi::{CString, CStr};
-use std::ffi::c_char;
-use std::path::{Path};
-use std::ffi::OsString;
+use std::ffi::CString;
+use std::path::Path;
 use std::fs::File;
 use std::io;
 
-use std::{fs, ptr};
+use std::ptr;
 use std::io::{Read, Write};
 use cfile::CFile;
 use menu::CreateFontRender;
-use sys_string::SysString;
-use std::os::windows::ffi::OsStringExt;
-use std::slice::from_raw_parts;
 use serde::{Serialize,Deserialize};
 use toml::de::Deserializer;
 use toml::Table;
@@ -61,14 +56,29 @@ pub enum Game{
 	Oblivion,NewVegas
 }
 
+pub fn static_mut_insert<T>(stat :*mut Option<T> , val : T ) {
+	unsafe{
+		(&mut *stat).replace(val);
+	}
+}
+
+pub fn get_static_ref<T>(stat : *mut Option<T>) -> &'static mut T{
+	unsafe {
+		return (&mut *stat).as_mut().unwrap();
+	}
+}
+
+pub fn get_static_ref_const<T>(stat : *const Option<T>) -> &'static  T{
+	unsafe {
+		return (& *stat).as_ref().unwrap();
+	}
+}
 pub static mut GAME : Option<Game> = None;
 
 pub static mut LOGGER : Option<CFile> = None;
 
 pub fn log<S: AsRef<str>>(message : S) -> () {
-	let log = unsafe{
-		LOGGER.as_mut().unwrap()
-	};
+	let log = get_static_ref(&raw mut LOGGER);
 	log.write(message.as_ref().as_bytes());
 }
 
@@ -125,41 +135,37 @@ pub fn  write_config_to_file<T : AsRef<Path>, C>(file : T, config : C) where C :
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SetGame(game : Game){
-	unsafe { GAME.replace(game); }
+	static_mut_insert(&raw mut  GAME , game);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getConfiguration() -> *mut Config {
 	unsafe{
-		match CONFIG.as_mut() {
+		match  &mut *(&raw mut CONFIG) {
 			None => ptr::null_mut(),
-			Some(mutref) => {
-				mutref as *mut Config
-			}
+			Some(mutref) =>  	mutref
 		}
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getEffectsConfiguration() -> *mut Effects {
 	unsafe{
-		match EFFECTS.as_mut() {
+		match &mut *(&raw mut EFFECTS){
 			None => ptr::null_mut(),
-			Some(mutref) => mutref as *mut Effects
+			Some(mutref) => mutref
 		}
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getShadersConfiguration() -> *mut Shaders {
 	unsafe{
-		match SHADERS.as_mut() {
+		match &mut *(&raw mut SHADERS){
 			None => ptr::null_mut(),
-			Some(mutref) => 
-				mutref as *mut Shaders
-				
+			Some(mutref) => mutref
 		}
 	}
 }
@@ -172,7 +178,7 @@ pub fn load_config<'a, P : AsRef<Path>, C> (path : P) -> C where C : Deserialize
 			if conf.1 == false{
 				log("Partial or partially invalid configuration found. Maybe older version?");
 				backup_file = true;
-			} 
+			}
 			conf
 		},
 	    Err(err) => match err{
@@ -180,7 +186,7 @@ pub fn load_config<'a, P : AsRef<Path>, C> (path : P) -> C where C : Deserialize
 				backup_file = true;
 				(C::default(),false)
 			},
-	        FileError(err) => { 
+	        FileError(err) => {
 				match err.kind() {
 					io::ErrorKind::NotFound => {
 						backup_file = false;
@@ -209,54 +215,52 @@ pub fn load_config<'a, P : AsRef<Path>, C> (path : P) -> C where C : Deserialize
 }
 
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn LoadConfiguration() -> (){
-	let path_main = match unsafe { GAME.as_ref().unwrap() } {
+	let game = unsafe { (& *(&raw const GAME)).as_ref().unwrap() };
+	let path_main = match game {
 	    Game::Oblivion => "./Data/OBSE/Plugins/OblivionReloaded.ini",
 	    Game::NewVegas => "./Data/NVSE/Plugins/NewVegasReloaded.ini",
 	};
-	
-	let base_shader = match unsafe { GAME.as_ref().unwrap() } {
+
+	let base_shader = match game {
 	    Game::Oblivion => "./Data/Shaders/OblivionReloaded",
 	    Game::NewVegas => "./Data/Shaders/NewVegasReloaded",
 	}.to_owned();
 
 	let path_effect = base_shader.clone() + "/Effects/Effects.ini";
-	let path_shader = base_shader + "/Shaders/Shaders.ini";	
+	let path_shader = base_shader + "/Shaders/Shaders.ini";
 	let config : Config = load_config(path_main);
 	let effects : Effects = load_config(path_effect);
 	let shaders : Shaders = load_config(path_shader);
 	let config_table = Table::try_from(&config).unwrap();
 	let shader_table = Table::try_from(&shaders).unwrap();
 	let effect_table = Table::try_from(&effects).unwrap();
-
-	unsafe{
-		CONFIG.replace(config);
-		EFFECTS.replace(effects);
-		SHADERS.replace(shaders);
-		CONFIG_TABLE.replace(config_table);
-		SHADERS_TABLE.replace(shader_table);
-		EFFECTS_TABLE.replace(effect_table);
-	}
+	static_mut_insert(&raw mut CONFIG, config);
+	static_mut_insert(&raw mut EFFECTS, effects);
+	static_mut_insert(&raw mut SHADERS, shaders);
+	static_mut_insert(&raw mut CONFIG_TABLE, config_table);
+	static_mut_insert(&raw mut SHADERS_TABLE, shader_table);
+	static_mut_insert(&raw mut EFFECTS_TABLE, effect_table);
 
 	log("Configuration File Loaded");
 }
 
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn CreateFontRenderer(device: LPDIRECT3DDEVICE9){
 	CreateFontRender(device);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn WriteVersionString(width: i32, height : i32, string : *const i8){
 	menu::WriteVersionString(width, height, string);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn RenderConfigurationMenu(width: i32, height : i32){ menu::RenderMenu(width, height );}
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn MoveActiveNode(mov : MoveCursor){
 	let moveconv = match mov {
 		MoveCursor::Up => MenuMove::Up,
@@ -265,14 +269,14 @@ pub extern "C" fn MoveActiveNode(mov : MoveCursor){
 		MoveCursor::Right => MenuMove::Right
 	};
 	unsafe {
-		MENU_STATE.move_menu_active_field(moveconv);
+		(&mut *(&raw mut MENU_STATE)).move_menu_active_field(moveconv);
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn EditActiveSetting(mov : menu::OperationSetting, callback: unsafe extern "C" fn(*const libc::c_char)){
 	match menu::ChangeCurrentSetting(mov){
-		Some(ref field_modified) => {
+		Some(field_modified) => {
 			let switch = CString::new(field_modified.to_owned()).unwrap();
 			unsafe {
 				callback(switch.as_ptr());
@@ -282,35 +286,36 @@ pub extern "C" fn EditActiveSetting(mov : menu::OperationSetting, callback: unsa
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SaveConfigurations(){
-	let path_main = match unsafe { GAME.as_ref().unwrap() } {
+	let game = unsafe { (& *(&raw const GAME)).as_ref().unwrap() };
+	let path_main = match game {
 	    Game::Oblivion => "./Data/OBSE/Plugins/OblivionReloaded.ini",
 	    Game::NewVegas => "./Data/NVSE/Plugins/NewVegasReloaded.ini",
 	};
-	
-	let base_shader = match unsafe { GAME.as_ref().unwrap() } {
+
+	let base_shader = match game {
 	    Game::Oblivion => "./Data/Shaders/OblivionReloaded",
 	    Game::NewVegas => "./Data/Shaders/NewVegasReloaded",
 	}.to_owned();
 
 	let path_effect = base_shader.clone() + "/Effects/Effects.ini";
-	let path_shader = base_shader + "/Shaders/Shaders.ini";	
+	let path_shader = base_shader + "/Shaders/Shaders.ini";
 	unsafe{
-		write_config_to_file(path_main, CONFIG.as_ref().unwrap());
-		write_config_to_file(path_shader, SHADERS.as_ref().unwrap());
-		write_config_to_file(path_effect, EFFECTS.as_ref().unwrap());
+		write_config_to_file(path_main, get_static_ref_const(&raw const CONFIG));
+		write_config_to_file(path_shader, get_static_ref_const(&raw const SHADERS));
+		write_config_to_file(path_effect, get_static_ref_const(&raw const EFFECTS));
 	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern  "C" fn EnterEditorMode(){
-	
+
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn IsEditorMode() {
-	
+
 }
 
 #[repr(C)]
@@ -326,15 +331,13 @@ pub enum MoveCursor{
 	Up,Down,Left,Right
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SetLogFile(file: *mut libc::FILE) -> Errors {
 	match CFile::wrap(file){
 		Err(err) => Errors::InvalidLog,
 		Ok(file) => {
-			unsafe {
-				LOGGER.replace(file);
-				Errors::None
-			}
+			static_mut_insert(&raw mut LOGGER, file );
+			Errors::None
 		}
 	}
 }
@@ -347,8 +350,8 @@ mod tests {
 	fn it_reads() {
 		let p = CString::new("./test.log").expect("Ok");
 		let m = CString::new("w").expect("Ok");
-		
-		let f = unsafe { libc::fopen(p.as_ptr(), m.as_ptr()) }; 
+
+		let f = unsafe { libc::fopen(p.as_ptr(), m.as_ptr()) };
 		let a = SetLogFile(f);
 
 		let conf : Config = load_config("./test.ini");

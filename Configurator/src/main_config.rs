@@ -1,4 +1,4 @@
-
+#![allow(non_snake_case)]
 use std::ffi::CString;
 use crate::sys_string::{SysString};
 use serde::{Serialize, Deserialize};

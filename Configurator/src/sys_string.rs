@@ -1,12 +1,12 @@
+#![allow(non_snake_case)]
 use fmt::Formatter;
 use serde::ser::SerializeSeq;
-use std::ffi::{c_void, CStr, CString};
-use std::ops::Deref;
+use std::ffi::{c_void, CStr};
 use std::{fmt, ptr};
-use serde::de::{Deserializer, Error, Unexpected, Visitor};
+use serde::de::{Deserializer, Error, Visitor};
 use serde::de::Deserialize;
 use serde::{Serialize, Serializer};
-use hex_serde_util::{HexU32PrefixUpper};
+use hex_serde_util::HexU32PrefixUpper;
 #[repr(C)]
 #[derive(Debug)]
 pub struct SysVec{

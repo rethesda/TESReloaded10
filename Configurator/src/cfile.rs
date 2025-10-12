@@ -1,9 +1,7 @@
-use fmt::Formatter;
-use std::ffi::{c_void, CStr, CString};
-use std::ops::Deref;
-use std::{fmt, ptr};
-use std::io::{Read, Write};
-use std::io::{Error, ErrorKind};
+#![allow(non_snake_case)]
+use std::ffi:: CString;
+use std::io::Write;
+use std::io::Error;
 pub struct CFile {
 	file : *mut libc::FILE
 }
