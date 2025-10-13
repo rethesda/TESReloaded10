@@ -2,7 +2,9 @@
 #![allow(non_upper_case_globals)]
 //#![allow(nonstandard_style)]
 
-use bevy_reflect::{Enum, NamedField, PartialReflect, Reflect, Struct};
+use bevy_reflect::{Array, Enum, NamedField, PartialReflect, Reflect, Struct};
+use bevy_reflect::OpaqueInfo;
+
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Deserialize;
@@ -20,6 +22,8 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 use std::ptr;
 use std::ffi::CString;
+use std::fmt::Write;
+
 use winapi::RIDL;
 use winapi::DEFINE_GUID;
 
@@ -126,17 +130,18 @@ enum MenuSelected {
 	Main,Shaders,Effects
 }
 
-pub struct MenuState {
+pub struct MenuState<'a> {
 	active_config : MenuSelected,
 	active_firstnode : String,
 	active_secondnode : String,
 	active_field : String,
+	current_element : Option<&'a dyn PartialReflect>,
 	terminal : bool,
 }
 
-impl MenuState {
-    pub fn new() -> MenuState {
-		MenuState { active_config: MenuSelected::Main , active_firstnode: "".into() , active_secondnode: "".into(), active_field: "".into(), terminal : false }
+impl <'a>  MenuState<'a> {
+    pub fn new() -> MenuState<'a> {
+		MenuState { active_config: MenuSelected::Main , active_firstnode: "".into() , active_secondnode: "".into(), active_field: "".into(), current_element : None , terminal : false }
 	} 
 	pub fn get_active_config(&self, zone : RenderingZone)-> &str{
 		match zone {
@@ -182,11 +187,11 @@ impl MenuState {
 		self.active_config = repl;
 	}
 	
-	fn get_next_state_key<'a>(&'a self, mov : &MenuMove, table : &'a Table, active_node : &str) -> Option<&String>{
+	fn get_next_state_key(&'a self, mov : &MenuMove, table : &'a Table, active_node : &str) -> Option<&'a String>{
 		if *mov == MenuMove::Down{
 			let mut found = false;
-			let mut el : Option<&String> = None;
-			for (key,val) in table {
+			let mut el : Option<& String> = None;
+			for (key,_val) in table {
 				if found{
 					el = Some(key);
 				}
@@ -197,7 +202,7 @@ impl MenuState {
 		else if *mov == MenuMove::Up {
 			let mut found = false;
 			let mut el : Option<&String> = None;
-			for (key,val) in table.iter().rev() {
+			for (key,_val) in table.iter().rev() {
 				if found{
 					el = Some(key);
 				}
@@ -297,7 +302,7 @@ impl MenuState {
 	}
 }
 
-pub static mut MENU_STATE : Lazy<MenuState> = Lazy::new(|| MenuState::new());
+pub static mut MENU_STATE : Lazy<MenuState<'static>> = Lazy::new(|| MenuState::new());
 
 pub fn get_active_config_from_global_state(zone : RenderingZone) -> &'static str{
 	unsafe{
@@ -305,13 +310,13 @@ pub fn get_active_config_from_global_state(zone : RenderingZone) -> &'static str
 	}
 }
 
-pub fn get_global_menu_state() -> &'static MenuState{
+pub fn get_global_menu_state() -> &'static MenuState<'static>{
 	unsafe{
 		& *(&raw const MENU_STATE)
 	}
 }
 
-pub fn get_global_menu_state_mut() -> &'static mut MenuState{
+pub fn get_global_menu_state_mut() -> &'static mut MenuState<'static>{
 	unsafe{
 		&mut *(&raw mut MENU_STATE)
 	}
@@ -407,6 +412,39 @@ pub fn RenderHeader() -> MenuRect{
 	rect
 }
 
+
+fn downcast_type(opaque_info : OpaqueInfo, field: &dyn PartialReflect) -> String {
+	let id = opaque_info.type_id();
+	if id  == TypeId::of::<u32>() {
+		field.try_downcast_ref::<u32>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<u8>() {
+		field.try_downcast_ref::<u8>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<u16>() {
+		field.try_downcast_ref::<u16>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<u64>() {
+		field.try_downcast_ref::<u64>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<bool>() {
+		field.try_downcast_ref::<bool>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<f32>() {
+		field.try_downcast_ref::<f32>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<f64>() {
+		field.try_downcast_ref::<f64>().unwrap().to_string()
+	}
+	else if id  == TypeId::of::<SysString>() {
+		field.try_downcast_ref::<SysString>().unwrap().to_string()
+	}
+	else {
+	//	log(format!("{:?}", namedField));
+		"<opaque>".to_owned()
+	}
+}
+
 fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, zone : RenderingZone, rect : &mut MenuRect){
 	match namedField.type_info().unwrap(){
 		bevy_reflect::TypeInfo::Struct(_struct_info) => {
@@ -416,16 +454,27 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 		bevy_reflect::TypeInfo::Tuple(tuple_info) => todo!(),
 		bevy_reflect::TypeInfo::List(list_info) => todo!(),
 		bevy_reflect::TypeInfo::Array(array_info) => {
-			rect.draw_opt(namedField.name(), "<ARRAY>",  Align::Left ,zone);
+			log(format!("{:?}", namedField));
+			let cap = array_info.capacity();
+			let text = match cap {
+				3 => {
+					let arr = field.try_downcast_ref::<[u8;3]>().unwrap();
+					let mut text = String::new();
+					write!(&mut text, "{:?}", arr).expect("Could not format");
+					text
+				}
+				_ => {"<Array>".to_owned()}
+			};
+			rect.draw_opt(namedField.name(), &text,  Align::Left ,zone);
 		}
 		bevy_reflect::TypeInfo::Map(map_info) => todo!(),
 		bevy_reflect::TypeInfo::Set(set_info) => todo!(),
 		bevy_reflect::TypeInfo::Enum(enum_info) => {
+			log(format!("{:?}", namedField));
 			rect.draw_opt(namedField.name(), "<ENUM>",  Align::Left ,zone);
 		},
 		bevy_reflect::TypeInfo::Opaque(opaque_info) => {
 			let id = opaque_info.type_id();
-			log(format!("{:?}", namedField));
 			let v : String = if id  == TypeId::of::<u32>() {
 				field.try_downcast_ref::<u32>().unwrap().to_string()
 			}
@@ -451,6 +500,7 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 				field.try_downcast_ref::<SysString>().unwrap().to_string()
 			}
 			else {
+				log(format!("{:?}", namedField));
 				"<opaque>".to_owned()
 			};
 			rect.draw_opt(namedField.name(), &v,  Align::Left ,zone);
@@ -476,7 +526,7 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.restore();
 	rect.next_column();
 	rect.save();
-	let first = 	get_global_menu_state().get_active_config(RenderingZone::ActiveFirst);
+	let first = get_global_menu_state().get_active_config(RenderingZone::ActiveFirst);
 	if !first.is_empty(){
 		match configtable.field(first){
 			None => {
@@ -526,7 +576,7 @@ pub enum OperationSetting {
 pub fn ChangeCurrentSetting(op : OperationSetting) -> Option<String> {
 	if get_global_menu_state().is_terminal() {
 		let conf = get_global_menu_state().get_active_mainconf();
-		let configtable  : &mut dyn Struct =  {
+		let configtable =  {
 			match conf {
 				MenuSelected::Main => get_static_ref(&raw mut CONFIG_TABLE),
 				MenuSelected::Shaders => get_static_ref(&raw mut SHADERS_TABLE),
