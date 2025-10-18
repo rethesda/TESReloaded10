@@ -8,6 +8,7 @@ use bevy_reflect::OpaqueInfo;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Deserialize;
+use strum::AsRefStr;
 use winapi::shared::guiddef::{GUID, IID};
 use winapi::shared::minwindef::{BOOL, BYTE, DWORD, FLOAT, INT, UINT};
 use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
@@ -23,6 +24,7 @@ use std::marker::PhantomData;
 use std::ptr;
 use std::ffi::CString;
 use std::fmt::Write;
+use std::cell::{Ref, RefCell, RefMut};
 
 use winapi::RIDL;
 use winapi::DEFINE_GUID;
@@ -33,7 +35,7 @@ use crate::effect_config::Effects;
 use crate::main_config::Config;
 use crate::shader_config::Shaders;
 use crate::sys_string::SysString;
-use crate::{log, CONFIG_TABLE, SHADERS_TABLE, EFFECTS_TABLE, CONFIG, SHADERS, EFFECTS, get_static_ref, static_mut_insert, get_static_ref_const};
+use crate::{get_static_ref, get_static_ref_const, log, menu, static_mut_insert, CONFIG, CONFIG_TABLE, EFFECTS, EFFECTS_TABLE, SHADERS, SHADERS_TABLE};
 
 #[link(name = "d3dx9")]
 unsafe extern "system" {
@@ -41,7 +43,7 @@ unsafe extern "system" {
 }
 
 
-DEFINE_GUID!(IID_ID3DXFont, 
+DEFINE_GUID!(IID_ID3DXFont,
 0xd79dbb70, 0x5f21, 0x4d36, 0xbb, 0xc2, 0xff, 0x52, 0x5c, 0x21, 0x3c, 0xdc);
 
 RIDL!{#[uuid(0xd79dbb70, 0x5f21, 0x4d36, 0xbb, 0xc2, 0xff, 0x52, 0x5c, 0x21, 0x3c, 0xdc)]
@@ -72,12 +74,12 @@ pub fn CreateFontRender(device: LPDIRECT3DDEVICE9) {
 	let res = unsafe{
 		D3DXCreateFontA(device, 22 , 0 , FW_NORMAL , 1 , false , DEFAULT_CHARSET , OUT_DEFAULT_PRECIS , ANTIALIASED_QUALITY , FF_DONTCARE , font_src.as_ptr() , &mut font as *mut *mut ID3DXFont)
 	};
-	
+
 	log(format!("Create font renderer {}  {:?}", res, font));
 	unsafe {
 		FontRenderer  = font;
-	}	
-} 
+	}
+}
 
 enum Align{
 	Left,Center,Right
@@ -116,6 +118,7 @@ const TitleColumnSize :i32 = 450;
 const TextSize : i32 = 22;
 const RowSpace : i32 = 0; //TODO
 
+#[derive(PartialEq, Eq)]
 enum RenderingZone {
 	ActiveConfig, ActiveFirst, ActiveSecond, ActiveThird,Version
 }
@@ -125,177 +128,219 @@ pub enum MenuMove {
 	Up, Down, Left, Right
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, AsRefStr)]
 enum MenuSelected {
 	Main,Shaders,Effects
 }
 
+#[derive(PartialEq, Eq)]
+enum ActiveColumn {
+	None, First,Second,Third
+}
+
+impl PartialEq<RenderingZone> for ActiveColumn{
+    fn eq(&self, other: &RenderingZone) -> bool {
+        if *self == ActiveColumn::None && *other == RenderingZone::ActiveConfig {
+			true
+		}
+		else if *self == ActiveColumn::First && *other == RenderingZone::ActiveFirst {
+			true
+		}
+		else if *self == ActiveColumn::Second && *other == RenderingZone::ActiveSecond {
+			true
+		}
+		else if *self == ActiveColumn::Third && *other == RenderingZone::ActiveThird {
+			true
+		}
+		else {
+			false
+		}
+    }
+}
+
 pub struct MenuState<'a> {
-	active_config : MenuSelected,
-	active_firstnode : String,
-	active_secondnode : String,
-	active_field : String,
-	current_element : Option<&'a dyn PartialReflect>,
-	terminal : bool,
+	active_config : RefCell<MenuSelected>,
+	first_element : RefCell<Option<(&'a dyn PartialReflect,usize)>>,
+	second_element : RefCell<Option<(&'a dyn PartialReflect,usize)>>,
+	third_element : RefCell<Option<(&'a dyn PartialReflect,usize)>>,
 }
 
 impl <'a>  MenuState<'a> {
     pub fn new() -> MenuState<'a> {
-		MenuState { active_config: MenuSelected::Main , active_firstnode: "".into() , active_secondnode: "".into(), active_field: "".into(), current_element : None , terminal : false }
-	} 
-	pub fn get_active_config(&self, zone : RenderingZone)-> &str{
-		match zone {
-			RenderingZone::ActiveConfig => match self.active_config  {
-			    MenuSelected::Main => "Main",
-				MenuSelected::Shaders => "Shaders",
-				MenuSelected::Effects => "Effects"
-			}
-			RenderingZone::ActiveFirst => &self.active_firstnode,
-			RenderingZone::ActiveSecond => &self.active_secondnode,
-			RenderingZone::ActiveThird => &self.active_field,
-			_ => ""
+		MenuState { active_config: RefCell::new(MenuSelected::Main), first_element : RefCell::new(None),second_element:RefCell::new(None), third_element : RefCell::new(None) }
+	}
+
+	pub fn get_active_configuration(&self) -> Ref<'_,MenuSelected>{
+		self.active_config.borrow()
+	}
+
+	pub fn get_active_for_zone(&'a self, col : ActiveColumn) -> Ref<'a, Option<(&'a dyn PartialReflect, usize)>>{
+		match col {
+			ActiveColumn::None => unreachable!() /*This is handled serparately, becouse is not a RefCell borrow*/,
+			ActiveColumn::First => self.first_element.borrow(),
+			ActiveColumn::Second => self.second_element.borrow(),
+			ActiveColumn::Third => self.third_element.borrow()
 		}
 	}
-	
-	pub fn get_active_mainconf(&self) -> &MenuSelected{
-		&self.active_config
-	}
-	
-	pub fn get_active_table(&self) -> &Table {
-		match self.active_config {
-			MenuSelected::Main => get_static_ref_const(&raw const CONFIG_TABLE),
-			MenuSelected::Shaders => get_static_ref_const(&raw const SHADERS_TABLE),
-			MenuSelected::Effects => get_static_ref_const(&raw const EFFECTS_TABLE)
+
+	pub fn get_active_for_zone_mut(&'a self, col : ActiveColumn) -> RefMut<'a, Option<(&'a dyn PartialReflect, usize)>>{
+		match col {
+			ActiveColumn::None => unreachable!() /*This is handled serparately, becouse is not a RefCell borrow*/,
+			ActiveColumn::First => self.first_element.borrow_mut(),
+			ActiveColumn::Second => self.second_element.borrow_mut(),
+			ActiveColumn::Third => self.third_element.borrow_mut()
 		}
 	}
-	
-	fn move_menu_config(&mut self, mov : MenuMove){
+
+	pub fn get_active_table(&self) -> &dyn Struct {
+		match *self.active_config.borrow() {
+			MenuSelected::Main => get_static_ref_const::<Config>(&raw const CONFIG) as &dyn Struct,
+			MenuSelected::Shaders => get_static_ref_const::<Shaders>(&raw const SHADERS) as &dyn Struct,
+			MenuSelected::Effects => get_static_ref_const::<Effects>(&raw const EFFECTS) as &dyn Struct
+		}
+	}
+
+	fn move_menu_config(&self, mov : MenuMove){
 		let repl = if mov == MenuMove::Right {
-			match self.active_config {
-				MenuSelected::Main => MenuSelected::Shaders,
-				MenuSelected::Shaders => MenuSelected::Effects,
-				MenuSelected::Effects => MenuSelected::Effects
+				match *self.active_config.borrow() {
+					MenuSelected::Main => MenuSelected::Shaders,
+					MenuSelected::Shaders => MenuSelected::Effects,
+					MenuSelected::Effects => MenuSelected::Effects
+				}
+			}
+			else if mov == MenuMove::Left {
+				match *self.active_config.borrow() {
+					MenuSelected::Main => MenuSelected::Main,
+					MenuSelected::Shaders => MenuSelected::Main,
+					MenuSelected::Effects => MenuSelected::Shaders
+				}
+			} else { unreachable!()};
+		self.active_config.replace(repl);
+	}
+
+	pub fn get_active_element_column(&self) -> ActiveColumn{
+		if let Some(_) = *self.third_element.borrow(){
+			ActiveColumn::Third
+		}
+		else if let Some(_) = *self.second_element.borrow(){
+			ActiveColumn::Second
+		}
+		else if let Some(_) = *self.first_element.borrow(){
+			ActiveColumn::First
+		}
+		else {
+			ActiveColumn::None
+		}
+	}
+
+	pub fn is_node_active(&self, node : &str, zone : RenderingZone ) -> bool{
+		let col = self.get_active_element_column();
+		if col  == zone {
+			match col{
+				ActiveColumn::None => (*self.active_config.borrow()).as_ref() ==  node,
+				ActiveColumn::First => {
+					let active_conf = self.get_active_table();
+					let id = self.first_element.borrow().unwrap().1;
+					active_conf.name_at(id).unwrap() == node
+				},
+				ActiveColumn::Second => {
+					let id = self.second_element.borrow().unwrap().1;
+					self.first_element.borrow().unwrap().0.reflect_ref().as_struct().unwrap().name_at(id).unwrap() == node
+				},
+				ActiveColumn::Third => {
+					let id = self.third_element.borrow().unwrap().1;
+					self.second_element.borrow().unwrap().0.reflect_ref().as_struct().unwrap().name_at(id).unwrap() == node
+				}
 			}
 		}
 		else {
-			match self.active_config {
-				MenuSelected::Main => MenuSelected::Main,
-				MenuSelected::Shaders => MenuSelected::Main,
-				MenuSelected::Effects => MenuSelected::Shaders
-			}
-		};
-		self.active_config = repl;
-	}
-	
-	fn get_next_state_key(&'a self, mov : &MenuMove, table : &'a Table, active_node : &str) -> Option<&'a String>{
-		if *mov == MenuMove::Down{
-			let mut found = false;
-			let mut el : Option<& String> = None;
-			for (key,_val) in table {
-				if found{
-					el = Some(key);
-				}
-				found = active_node == key;
-			}
-			el
-		}
-		else if *mov == MenuMove::Up {
-			let mut found = false;
-			let mut el : Option<&String> = None;
-			for (key,_val) in table.iter().rev() {
-				if found{
-					el = Some(key);
-				}
-				found = active_node == key;
-			}
-			el
-		}
-		else {
-			None
+			false
 		}
 	}
-	pub fn is_terminal(&self) -> bool {
-		self.terminal
-	}
-	
-	pub fn move_menu_active_field(&mut self, mov : MenuMove) {
-		let term = self.terminal;
+
+	pub fn move_menu_active_field(&'a self, mov : MenuMove) {
 		let table = self.get_active_table();
-		if self.active_firstnode.is_empty(){
-			if mov == MenuMove::Left || mov == MenuMove::Right{
-				self.move_menu_config(mov);
-			}
-			else if mov == MenuMove::Down {
-				let item = table.iter().next();
-				self.active_firstnode = item.unwrap().0.into();
-			}
-		}
-		else if self.active_secondnode.is_empty(){
-			if mov == MenuMove::Up || mov == MenuMove::Down {
-				match self.get_next_state_key(&mov, table , &self.active_firstnode ){
-					None => {
-						if mov == MenuMove::Up {
-							self.active_firstnode = "".to_owned();
+		let col = self.get_active_element_column();
+		match col {
+			ActiveColumn::None => {
+			//The config selectors only are selected, not a menu member proper
+				match mov {
+					MenuMove::Up  => {/*NO OP*/},
+					MenuMove::Down => {
+						self.first_element.replace(Some((table.field_at(0).unwrap(),0)));
+					},
+					MenuMove::Left | MenuMove::Right => self.move_menu_config(mov)
+				}
+			},
+			ActiveColumn::First => {
+				let cur_idx = self.first_element.borrow().unwrap().1; //TEST is borrow going out of scope here?
+				match mov {
+					MenuMove::Up  => {
+						if cur_idx == 0 {
+							self.first_element.replace(None);
+						}
+						else {
+							self.first_element.replace(Some((table.field_at(cur_idx -1).unwrap(),cur_idx -1)));
 						}
 					},
-					Some(el) => {
-						self.active_firstnode = el.to_owned();
-					}
-				}
-			}
-			else if mov == MenuMove::Right {
-				let t = table.get(&self.active_firstnode).unwrap().as_table().unwrap();
-				let activ = t.iter().next().unwrap();
-				let act_key = activ.0.to_owned();
-				let termin = !activ.1.is_table();
-				self.active_secondnode = act_key;
-				self.terminal = termin;
-			}
-		}
-		else if self.active_field.is_empty(){
-			let tab = table.get(&self.active_firstnode).unwrap().as_table().unwrap();
-			if mov == MenuMove::Up || mov == MenuMove::Down {
-				match self.get_next_state_key(&mov, tab , &self.active_secondnode ){
-					None => {},
-					Some(el) => {
-						let b = !tab.get(&self.active_secondnode).unwrap().is_table();
-						self.active_secondnode = el.to_owned();
-						self.terminal = b;
-					}
-				}
-			}
-			else if mov == MenuMove::Right && !self.terminal{
-				let t = tab.get(&self.active_secondnode).unwrap();
-				if t.is_table() {
-					self.active_field = t.as_table().unwrap().iter().next().unwrap().0.to_owned();
-					self.terminal = false;
-				}
-				else{
-					self.terminal = true;
-				}
-			}
-			else if mov == MenuMove::Left{
-				self.active_secondnode = "".to_owned();
-				self.terminal = false;
-			}
-		}
-		else {
-			let tabl = table.get(&self.active_firstnode).unwrap().as_table().unwrap().get(&self.active_secondnode).unwrap();
-			if tabl.is_table(){
-				let tab = tabl.as_table().unwrap();
-				
-				if mov == MenuMove::Up || mov == MenuMove::Down {
-					match self.get_next_state_key(&mov, tab , &self.active_field ){
-						None => {},
-						Some(el) => {
-							self.active_field = el.to_owned();
-							self.terminal = true;
+					MenuMove::Down => {
+						if (cur_idx + 1) <  table.field_len() {
+							self.first_element.replace(Some((table.field_at(cur_idx +1).unwrap(),cur_idx +1)));
 						}
+					},
+					MenuMove::Right => {
+						let el = self.first_element.borrow().unwrap().0.reflect_ref().as_struct().unwrap();
+						self.second_element.replace(Some((el.field_at(0).unwrap(),0)));
+					},
+					MenuMove::Left => {/* NO OP */}
+				}
+			},
+			ActiveColumn::Second => {
+				let cur_idx = self.second_element.borrow().unwrap().1; //TEST is borrow going out of scope here?
+				let first_el = self.first_element.borrow().unwrap().0.reflect_ref().as_struct().unwrap();
+				match mov {
+					MenuMove::Up  => {
+						if cur_idx > 0 {
+							self.second_element.replace(Some((first_el.field_at(cur_idx -1).unwrap(),cur_idx -1)));
+						}
+					},
+					MenuMove::Down => {
+						if (cur_idx +1) < first_el.field_len(){
+							self.second_element.replace(Some((first_el.field_at(cur_idx +1).unwrap(),cur_idx +1)));
+						}
+					},
+					MenuMove::Right => {
+						let el = self.second_element.borrow().unwrap().0.reflect_ref().as_struct();
+						match el{
+							Ok(ref element) => {
+								self.third_element.replace(Some((element.field_at(0).unwrap(),0)));
+							},
+							Err(_) => {},
+						}
+					},
+					MenuMove::Left => {
+						self.second_element.replace(None);
 					}
 				}
-				else if mov == MenuMove::Left{
-					self.active_field = "".to_owned();
-					self.terminal = false;
+			},
+			ActiveColumn::Third => {
+				let cur_idx = self.third_element.borrow().unwrap().1; //TEST is borrow going out of scope here?
+				let second_el = self.second_element.borrow().unwrap().0.reflect_ref().as_struct().unwrap();
+				match mov {
+					MenuMove::Up  => {
+						if cur_idx > 0 {
+							self.third_element.replace(Some((second_el.field_at(cur_idx -1).unwrap(),cur_idx -1)));
+						}
+					},
+					MenuMove::Down => {
+						if (cur_idx +1) < second_el.field_len(){
+							self.third_element.replace(Some((second_el.field_at(cur_idx +1).unwrap(),cur_idx +1)));
+						}
+					},
+					MenuMove::Right => {/*End of menu. No OP*/ },
+					MenuMove::Left => {
+						self.third_element.replace(None);
+					}
 				}
 			}
 		}
@@ -306,7 +351,7 @@ pub static mut MENU_STATE : Lazy<MenuState<'static>> = Lazy::new(|| MenuState::n
 
 pub fn get_active_config_from_global_state(zone : RenderingZone) -> &'static str{
 	unsafe{
-		(& *(&raw const  MENU_STATE)).get_active_config(zone)
+		""
 	}
 }
 
@@ -332,16 +377,16 @@ impl MenuRect {
 	pub fn new(renderer : *mut ID3DXFont) -> Self{
 		MenuRect { rect: RECT {left : 0, top : 0, right: 0, bottom: 0},save_rect : RECT {left : 0, top : 0, right: 0, bottom: 0}, renderer }
 	}
-	
+
 	pub fn new_with_coords(left : i32, top : i32, right : i32, bottom : i32, renderer : *mut ID3DXFont) -> Self{
 		MenuRect { rect: NewRect(left, top , right , bottom ), save_rect: NewRect(left, top , right , bottom ), renderer }
 	}
-	
+
 	pub fn next_row(&mut self) {
 		let rect_bor = &mut self.rect;
 		UpdateRect(rect_bor, rect_bor.left , rect_bor.bottom , rect_bor.right , rect_bor.bottom + TextSize );
 	}
-	
+
 	pub fn next_column(&mut self){
 		let rect_bor = &mut self.rect;
 		UpdateRect(rect_bor, rect_bor.right , rect_bor.top , rect_bor.right + TitleColumnSize , rect_bor.bottom);
@@ -350,41 +395,23 @@ impl MenuRect {
 	pub fn save(&mut self){
 		self.save_rect = self.rect;
 	}
-	
+
 	pub fn restore(&mut self){
 		self.rect = self.save_rect;
 	}
-	
-	fn is_active_zone(&self, rendering : &RenderingZone) -> bool {
-		match rendering {
-		    RenderingZone::ActiveConfig => {
-				get_global_menu_state().get_active_config(RenderingZone::ActiveFirst).is_empty()
-			},
-		    RenderingZone::ActiveFirst => {
-				get_global_menu_state().get_active_config(RenderingZone::ActiveSecond).is_empty()
-			},
-		    RenderingZone::ActiveSecond =>  {
-				get_global_menu_state().get_active_config(RenderingZone::ActiveThird).is_empty()
-			},
-		    RenderingZone::ActiveThird =>  {
-				true
-			},
-		    RenderingZone::Version => {false},
-		}
-	}
-	
+
 	pub fn draw<'a, S : Into<&'a str>>(&mut self, text : S, align : Align, rendering : RenderingZone) {
 		let nulled = CString::new(text.into()).unwrap();
-		let active_node =  self.is_active_zone(&rendering) && 	get_global_menu_state().get_active_config(rendering).eq_ignore_ascii_case(nulled.to_str().unwrap());
+		let active_node =  get_global_menu_state().is_node_active(nulled.to_str().unwrap(), rendering);
 		let color = if active_node {(10,240,180)} else {(250,240,180)};
 		DrawText(self.renderer, &mut self.rect, nulled.as_ptr() as *const i8, color , align);
 	}
 
-	
+
 	pub fn draw_opt<'a, S : Into<&'a str>>(&mut self, arg : S, opt : S,  align : Align, rendering : RenderingZone) {
 		let it = arg.into().to_string();
 		let nulled = CString::new(it.clone() + " = " + opt.into()).unwrap();
-		let active_node = self.is_active_zone(&rendering) && get_global_menu_state().get_active_config(rendering).eq_ignore_ascii_case(it.as_str());
+		let active_node =  get_global_menu_state().is_node_active(&it, rendering);
 		let color = if active_node {(10,240,180)} else {(250,240,180)};
 		DrawText(self.renderer, &mut self.rect, nulled.as_ptr() as *const i8, color , align);
 	}
@@ -393,7 +420,7 @@ impl MenuRect {
 pub fn WriteVersionString(width: i32, height : i32, string : *const i8){
 	let font_render = unsafe {FontRenderer};
 	let mut rect = NewRect(0, height - TextSize - 10, width, height + TextSize);
-	
+
 	DrawText(font_render , &mut rect, string ,(250,240,180), Align::Center);
 }
 
@@ -403,7 +430,7 @@ pub fn RenderHeader() -> MenuRect{
 	rect.draw("Oblivion Reloaded - Settings", Align::Center, RenderingZone::Version);
 	rect.next_row();
 	rect.save();
-	rect.draw("Main", Align::Left, RenderingZone::ActiveConfig);	
+	rect.draw("Main", Align::Left, RenderingZone::ActiveConfig);
 	rect.next_column();
 	rect.draw("Shaders", Align::Left,RenderingZone::ActiveConfig);
 	rect.next_column();
@@ -454,7 +481,6 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 		bevy_reflect::TypeInfo::Tuple(tuple_info) => todo!(),
 		bevy_reflect::TypeInfo::List(list_info) => todo!(),
 		bevy_reflect::TypeInfo::Array(array_info) => {
-			log(format!("{:?}", namedField));
 			let cap = array_info.capacity();
 			let text = match cap {
 				3 => {
@@ -463,7 +489,10 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 					write!(&mut text, "{:?}", arr).expect("Could not format");
 					text
 				}
-				_ => {"<Array>".to_owned()}
+				_ => {
+					log(format!("{:?}", namedField));
+					"<Array>".to_owned()
+				}
 			};
 			rect.draw_opt(namedField.name(), &text,  Align::Left ,zone);
 		}
@@ -510,12 +539,7 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 
 pub fn RenderMenu(width: i32, height : i32){
 	let mut rect = RenderHeader();
-	let configtable : &dyn Struct  = match get_global_menu_state().get_active_mainconf() {
-		MenuSelected::Main => get_static_ref_const::<Config>(&raw const CONFIG) as &dyn Struct,
-		MenuSelected::Shaders => get_static_ref_const::<Shaders>(&raw const SHADERS) as &dyn Struct,
-		MenuSelected::Effects => get_static_ref_const::<Effects>(&raw const EFFECTS) as &dyn Struct,
-	};
-	
+	let configtable : &dyn Struct  = get_global_menu_state().get_active_table();
 	rect.next_row();
 	rect.save();
 	let type_info = configtable.get_represented_type_info().unwrap().as_struct().unwrap();
@@ -526,43 +550,29 @@ pub fn RenderMenu(width: i32, height : i32){
 	rect.restore();
 	rect.next_column();
 	rect.save();
-	let first = get_global_menu_state().get_active_config(RenderingZone::ActiveFirst);
-	if !first.is_empty(){
-		match configtable.field(first){
-			None => {
-				log(format!("[ERROR] Configuration Key {} not found", first));
-			}
-			Some(val) => {
-				let stru = val.reflect_ref().as_struct().unwrap();
-				let type_first_selected = stru.get_represented_type_info().unwrap().as_struct().unwrap();
-				for  (field, namedField) in stru.iter_fields().zip(type_first_selected.iter()) {
-					render_reflected_struct(	namedField, field, RenderingZone::ActiveSecond, &mut rect );
-					rect.next_row();
-				}
-			}
+	let first = get_global_menu_state().get_active_for_zone(ActiveColumn::First);
+	if let Some(ref first_col) = *first {
+		let stru = first_col.0.reflect_ref().as_struct().unwrap();
+		let type_first_selected = stru.get_represented_type_info().unwrap().as_struct().unwrap();
+		for  (field, namedField) in stru.iter_fields().zip(type_first_selected.iter()) {
+			render_reflected_struct(namedField, field, RenderingZone::ActiveSecond, &mut rect );
+			rect.next_row();
 		}
 	}
 	rect.restore();
 	rect.next_column();
 	rect.save();
-	let second = get_global_menu_state().get_active_config(RenderingZone::ActiveSecond);
-	if !second.is_empty(){
-		match configtable.field(first).unwrap().reflect_ref().as_struct().unwrap().field(second) {
-			None => {
-				log(format!("[ERROR] Configuration Key {} not found", second));
-			}
-			Some(val) => {
-				match  val.reflect_ref().as_struct() {
-					Ok(structure) =>{
-						let type_first_selected = structure.get_represented_type_info().unwrap().as_struct().unwrap();
-						for  (field, namedField) in structure.iter_fields().zip(type_first_selected.iter()) {
-							render_reflected_struct(	namedField, field, RenderingZone::ActiveThird, &mut rect );
-							rect.next_row();
-						}
-					},
-					Err(_) => {},
+	let second = get_global_menu_state().get_active_for_zone(ActiveColumn::Second);
+	if let Some(ref second_col) = *second {
+		match second_col.0.reflect_ref().as_struct() {
+			Ok(structure) =>{
+				let type_first_selected = structure.get_represented_type_info().unwrap().as_struct().unwrap();
+				for  (field, namedField) in structure.iter_fields().zip(type_first_selected.iter()) {
+					render_reflected_struct(namedField, field, RenderingZone::ActiveThird, &mut rect );
+					rect.next_row();
 				}
-			}
+			},
+			Err(_) => {},
 		}
 	}
 }
@@ -573,57 +583,27 @@ pub enum OperationSetting {
 	Add, Sub
 }
 
+fn update_selected_value(op: OperationSetting, value : &mut Option<(&dyn PartialReflect, usize)>){
+	match value.unwrap().0.reflect_mut() {
+		bevy_reflect::ReflectMut::Struct(_) => {},
+		bevy_reflect::ReflectMut::Array(array) => todo!(),
+		bevy_reflect::ReflectMut::Enum(_) => todo!(),
+		bevy_reflect::ReflectMut::Opaque(partial_reflect) => todo!(),
+		_ => todo!()
+	}
+}
+
+
 pub fn ChangeCurrentSetting(op : OperationSetting) -> Option<String> {
-	if get_global_menu_state().is_terminal() {
-		let conf = get_global_menu_state().get_active_mainconf();
-		let configtable =  {
-			match conf {
-				MenuSelected::Main => get_static_ref(&raw mut CONFIG_TABLE),
-				MenuSelected::Shaders => get_static_ref(&raw mut SHADERS_TABLE),
-				MenuSelected::Effects => get_static_ref(&raw mut EFFECTS_TABLE)
-			}
-		};
-		let first = get_active_config_from_global_state(RenderingZone::ActiveFirst);
-		let second = get_active_config_from_global_state(RenderingZone::ActiveSecond);
-		let third = get_active_config_from_global_state(RenderingZone::ActiveThird);
-		let tabled = configtable.get_mut(first).unwrap().as_table_mut().unwrap().get_mut(second).unwrap();
-		let tab : &mut Value = if tabled.is_table(){ tabled.as_table_mut().unwrap().get_mut(third).unwrap() } else {tabled};
-		let modified = match tab {
-			//TODO, this rely on a custom version of the toml crate with custom Value discriminants. We can implement it directly as it's only a serialization between struct and table with no TOML accessor
-			// But for now it seems good enough, not that it break actual TOML serialization and deserialization
-		    Value::Integer(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UInteger(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Int(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UInt(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Short(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UShort(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Byte(cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::UByte( cont) => { if op == OperationSetting::Add { *cont = cont.saturating_add(1) } else { *cont = cont.saturating_sub(1) }; true},
-		    Value::Float( cont) => {  if op == OperationSetting::Add { *cont += 0.1 } else { *cont -= 0.1 };  true},
-		    Value::Float32( cont) => {if op == OperationSetting::Add { *cont += 0.1f32 } else { *cont -= 0.1f32 }; true},
-		    Value::Boolean( cont) => { *cont = !*cont; true },
-		    _ => {log(format!("{:?}", tab)); false},
-		};
-		if modified {
-			match conf {
-				MenuSelected::Main => {
-					static_mut_insert(&raw mut CONFIG  ,crate::main_config::Config::deserialize(configtable.clone()).unwrap());
-				},
-				MenuSelected::Shaders => {
-					static_mut_insert(&raw mut SHADERS  ,crate::shader_config::Shaders::deserialize(configtable.clone()).unwrap());
-				},
-				MenuSelected::Effects => {
-					static_mut_insert(&raw mut EFFECTS  ,crate::effect_config::Effects::deserialize(configtable.clone()).unwrap());
-				}
-			}
-			if *conf == MenuSelected::Main {
-				if first.eq_ignore_ascii_case("Shaders") || first.eq_ignore_ascii_case("Effects"){
-					return Some(second.to_owned());
-				}
-			}
-			return None;
-		}
-		return None;
+	match get_global_menu_state().get_active_element_column(){
+		ActiveColumn::None => {},
+		ActiveColumn::First => {},
+		ActiveColumn::Second => {
+			update_selected_value(op, get_global_menu_state().get_active_for_zone_mut(ActiveColumn::Second));
+		},
+		ActiveColumn::Third => {
+			update_selected_value(op,get_global_menu_state().get_active_for_zone_mut(ActiveColumn::Third));
+		},
 	}
 	return None;
 }

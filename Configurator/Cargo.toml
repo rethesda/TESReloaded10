@@ -20,6 +20,7 @@ winapi = { version = "0.3", features = ["std", "d3d9", "d3d9types", "wtypes", "w
 rust_decimal = "1.37.1"
 rust_decimal_macros = "1.37.1"
 bevy_reflect ="*"
+strum = { version = "0.27", features = ["derive"] }
 [build-dependencies]
 cbindgen = "0.29.0"
 embed-resource = "*"
