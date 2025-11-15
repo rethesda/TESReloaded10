@@ -337,12 +337,22 @@ impl Default for ShadowFormsStruct{
 	}
 }
 
+#[repr(u8)]
+#[derive(Debug,Serialize,Deserialize, Reflect)]
+#[allow(non_snake_case)]
+enum ShadowType {
+    DISABLED,
+    VSM,
+    ESM,
+    ESSM
+}
+
 #[repr(C)]
 #[derive(Debug,Serialize,Deserialize,DeserializeOver, Reflect)]
 #[allow(non_snake_case)]
 pub struct ShadowsExteriorStruct{
 	Enabled : bool,
-	ShadowMode : u8,
+	ShadowMode : ShadowType,
     ShadowMapResolution : u32,
     ShadowMapRadius : f32,
     ShadowMapFarPlane : f32,
@@ -356,7 +366,7 @@ impl Default for ShadowsExteriorStruct{
     fn default() -> Self{
         ShadowsExteriorStruct{
 			Enabled : true,
-			ShadowMode : 1,
+			ShadowMode : ShadowType::VSM,
             ShadowMapResolution: 2048,
             ShadowMapRadius: 8000.0,
             ShadowMapFarPlane: 32768.0,
