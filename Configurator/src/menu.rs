@@ -5,8 +5,6 @@
 use bevy_reflect::{Array, DynamicVariant, Enum, NamedField, PartialReflect, Reflect, Struct};
 use bevy_reflect::OpaqueInfo;
 
-use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
 use serde::Deserialize;
 use strum::AsRefStr;
 use winapi::shared::guiddef::{GUID, IID};

@@ -11,14 +11,12 @@ crate-type = ["cdylib"]
 [dependencies]
 serde = { version = "*", features = ["derive"]}
 serde-deserialize-over = "*"
-toml = { path = "../../toml/crates/toml", features = ["preserve_order"] }
+toml = { version = "0.8.23", features = ["preserve_order"] }
 libc = "*"
 memchr = "*"
 hex-serde-util = "*"
 once_cell = "*"
 winapi = { version = "0.3", features = ["std", "d3d9", "d3d9types", "wtypes", "wtypesbase", "winuser"] }
-rust_decimal = "1.37.1"
-rust_decimal_macros = "1.37.1"
 bevy_reflect ="*"
 strum = { version = "0.27", features = ["derive"] }
 [build-dependencies]
