@@ -2,7 +2,7 @@
 #![allow(non_upper_case_globals)]
 //#![allow(nonstandard_style)]
 
-use bevy_reflect::{Array, Enum, NamedField, PartialReflect, Reflect, Struct};
+use bevy_reflect::{Array, DynamicVariant, Enum, NamedField, PartialReflect, Reflect, Struct};
 use bevy_reflect::OpaqueInfo;
 
 use rust_decimal::Decimal;
@@ -183,20 +183,49 @@ impl <'a>  MenuState<'a> {
 		}
 	}
 
-	pub fn get_active_for_zone_mut(&'a self, col : ActiveColumn) -> RefMut<'a, Option<(&'a dyn PartialReflect, usize)>>{
-		match col {
-			ActiveColumn::None => unreachable!() /*This is handled serparately, becouse is not a RefCell borrow*/,
-			ActiveColumn::First => self.first_element.borrow_mut(),
-			ActiveColumn::Second => self.second_element.borrow_mut(),
-			ActiveColumn::Third => self.third_element.borrow_mut()
-		}
-	}
-
 	pub fn get_active_table(&self) -> &dyn Struct {
 		match *self.active_config.borrow() {
 			MenuSelected::Main => get_static_ref_const::<Config>(&raw const CONFIG) as &dyn Struct,
 			MenuSelected::Shaders => get_static_ref_const::<Shaders>(&raw const SHADERS) as &dyn Struct,
 			MenuSelected::Effects => get_static_ref_const::<Effects>(&raw const EFFECTS) as &dyn Struct
+		}
+	}
+
+	pub fn get_terminal_field(&self) -> Option<(&mut dyn PartialReflect, Option<&'static str>)>{
+		let current_table = match *self.active_config.borrow() {
+			MenuSelected::Main => get_static_ref::<Config>(&raw mut CONFIG) as &mut dyn Struct,
+			MenuSelected::Shaders => get_static_ref::<Shaders>(&raw mut SHADERS) as &mut dyn Struct,
+			MenuSelected::Effects => get_static_ref::<Effects>(&raw mut EFFECTS) as &mut dyn Struct
+		};
+		if let Some(ref inner) = *self.first_element.borrow(){
+			let name = current_table.get_represented_type_info().unwrap().as_struct().unwrap().field_at(inner.1).unwrap().name();
+			let inner_struct = current_table.field_at_mut(inner.1).unwrap();
+			if  let Some(ref second_inner) = *self.second_element.borrow(){
+				let name_field = inner_struct.get_represented_type_info().unwrap().as_struct().unwrap().field_at(second_inner.1).unwrap().name();
+				let second_level_struct = inner_struct.reflect_mut().as_struct().unwrap().field_at_mut(second_inner.1).unwrap();
+				if let Some(ref third_inner) = *self.third_element.borrow(){
+					second_level_struct.reflect_mut().as_struct().unwrap().field_at_mut(third_inner.1).map( | opt | (opt, None))
+				}
+				else{
+					if second_level_struct.reflect_mut().as_struct().is_err(){
+						if *self.active_config.borrow() == MenuSelected::Main && (name.eq_ignore_ascii_case("Effects")  || name.eq_ignore_ascii_case("Shaders")){
+							Some((second_level_struct, Some(name_field)))
+						}
+						else{
+							Some((second_level_struct, None))
+						}
+					}
+					else{
+						None
+					}
+				}
+			}
+			else {
+				None
+			}
+		}
+		else{
+			None
 		}
 	}
 
@@ -496,11 +525,11 @@ fn render_reflected_struct(namedField: &NamedField, field: &dyn PartialReflect, 
 			};
 			rect.draw_opt(namedField.name(), &text,  Align::Left ,zone);
 		}
-		bevy_reflect::TypeInfo::Map(map_info) => todo!(),
-		bevy_reflect::TypeInfo::Set(set_info) => todo!(),
-		bevy_reflect::TypeInfo::Enum(enum_info) => {
-			log(format!("{:?}", namedField));
-			rect.draw_opt(namedField.name(), "<ENUM>",  Align::Left ,zone);
+		bevy_reflect::TypeInfo::Map(_map_info) => todo!(),
+		bevy_reflect::TypeInfo::Set(_set_info) => todo!(),
+		bevy_reflect::TypeInfo::Enum(_enum_info) => {
+			let variant = field.reflect_ref().as_enum().unwrap();
+			rect.draw_opt(namedField.name(), variant.variant_name() ,  Align::Left ,zone);
 		},
 		bevy_reflect::TypeInfo::Opaque(opaque_info) => {
 			let id = opaque_info.type_id();
@@ -583,27 +612,93 @@ pub enum OperationSetting {
 	Add, Sub
 }
 
-fn update_selected_value(op: OperationSetting, value : &mut Option<(&dyn PartialReflect, usize)>){
-	match value.unwrap().0.reflect_mut() {
+fn update_selected_value(op: OperationSetting, value : &mut dyn PartialReflect){
+	match value.reflect_mut() {
 		bevy_reflect::ReflectMut::Struct(_) => {},
-		bevy_reflect::ReflectMut::Array(array) => todo!(),
-		bevy_reflect::ReflectMut::Enum(_) => todo!(),
-		bevy_reflect::ReflectMut::Opaque(partial_reflect) => todo!(),
+		bevy_reflect::ReflectMut::Array(array) => log(format!("Not supported modifications for Array types")),
+		bevy_reflect::ReflectMut::Enum(enum_value) => {
+			let enum_type = enum_value.get_represented_enum_info().unwrap();
+			let idx = enum_value.variant_index();
+			let bound = enum_type.variant_len();
+			let new_val = match  op {
+				OperationSetting::Add => (idx +1) % bound,
+				OperationSetting::Sub => (idx -1) % bound,
+			};
+			let new_variant = enum_type.variant_at(new_val).unwrap();
+			let mut dyn_enum = enum_value.to_dynamic_enum();
+			dyn_enum.set_variant_with_index(new_val, new_variant.name(), DynamicVariant::Unit );
+			enum_value.apply(dyn_enum.as_partial_reflect());
+		},
+		bevy_reflect::ReflectMut::Opaque(opaque_value) => {
+			let id = opaque_value.get_represented_type_info().unwrap().type_id();
+			if id  == TypeId::of::<u32>() {
+				let mut val = opaque_value.try_downcast_ref::<u32>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => val +1,
+					OperationSetting::Sub => val -1,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<u8>() {
+				let val =  opaque_value.try_downcast_ref::<u8>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => val +1,
+					OperationSetting::Sub => val -1,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<u16>() {
+				let val =  opaque_value.try_downcast_ref::<u16>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => val +1,
+					OperationSetting::Sub => val -1,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<u64>() {
+				let val =  opaque_value.try_downcast_ref::<u64>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => val +1,
+					OperationSetting::Sub => val -1,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<bool>() {
+				let val =  opaque_value.try_downcast_ref::<bool>().unwrap();
+				let new_val = !val;
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<f32>() {
+				let val =  opaque_value.try_downcast_ref::<f32>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => ((val * 100.0f32).trunc()  + 1.0f32) / 100.0f32,
+					OperationSetting::Sub => ((val * 100.0f32).trunc()  - 1.0f32) / 100.0f32,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else if id  == TypeId::of::<f64>() {
+				let val =  opaque_value.try_downcast_ref::<f64>().unwrap();
+				let new_val = match  op {
+					OperationSetting::Add => ((val * 100.0f64).trunc()  + 1.0f64) / 100.0f64,
+					OperationSetting::Sub => ((val * 100.0f64).trunc()  - 1.0f64) / 100.0f64,
+				};
+				opaque_value.apply(&new_val);
+			}
+			else {
+				log(format!("Cannot change element of type {:?}", opaque_value))
+			}
+		},
 		_ => todo!()
 	}
 }
 
 
 pub fn ChangeCurrentSetting(op : OperationSetting) -> Option<String> {
-	match get_global_menu_state().get_active_element_column(){
-		ActiveColumn::None => {},
-		ActiveColumn::First => {},
-		ActiveColumn::Second => {
-			update_selected_value(op, get_global_menu_state().get_active_for_zone_mut(ActiveColumn::Second));
-		},
-		ActiveColumn::Third => {
-			update_selected_value(op,get_global_menu_state().get_active_for_zone_mut(ActiveColumn::Third));
+	match get_global_menu_state().get_terminal_field(){
+		None => {None},
+		Some((element, name)) => {
+			update_selected_value(op,element);
+			name.map(|name| name.to_owned())
 		},
 	}
-	return None;
 }
