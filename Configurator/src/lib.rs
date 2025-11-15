@@ -1,4 +1,4 @@
-#![feature(vec_into_raw_parts,const_trait_impl)]
+#![feature(float_algebraic)]
 #![allow(non_snake_case)]
 extern crate  memchr;
 extern crate alloc;
@@ -20,6 +20,7 @@ use std::ptr;
 use std::io::{Read, Write};
 use cfile::CFile;
 use menu::CreateFontRender;
+use serde::de::DeserializeOwned;
 use serde::{Serialize,Deserialize};
 use toml::de::Deserializer;
 use toml::Table;
@@ -28,7 +29,7 @@ use serde_deserialize_over::DeserializeOver;
 
 use winapi::shared::d3d9::LPDIRECT3DDEVICE9;
 
-use crate::ConfigurationError::{Deserialization, FileError};
+use crate::ConfigurationError::{Deserialization};
 use crate::main_config::Config;
 use crate::effect_config::Effects;
 use crate::shader_config::Shaders;
@@ -38,7 +39,6 @@ use crate::menu::MenuMove;
 #[derive(Debug)]
 pub enum ConfigurationError{
 	Deserialization,
-	FileError(io::Error)
 }
 //TODO separation between games
 
@@ -82,35 +82,39 @@ pub fn log<S: AsRef<str>>(message : S) -> () {
 	log.write(message.as_ref().as_bytes());
 }
 
-pub fn read_config_from_file<'a, T : AsRef<Path>, C >(file : T) -> Result<(C, bool) ,ConfigurationError> where C : Deserialize<'a> + DeserializeOver<'a> + Default{
+
+pub fn read_config_from_file<T:AsRef<Path>>(file : T) -> Result<String,io::Error> {
 	let file_res  = File::open(&file);
 	let mut cont = String::new();
 	match file_res {
 		Err(err) => {
 			log(format!("Cannot open Configuration file {:#?}  {}",file.as_ref(),err));
-			Err(FileError(err))
+			Err(err)
 		},
 		Ok(mut file) =>{
 			match file.read_to_string(&mut cont){
-				Ok(_) => {
-					match C::deserialize(Deserializer::new(&cont)){
-				        Ok(config) => Ok((config, true)),
-				        Err(_) => {
-							let mut config = C::default();
-							match config.deserialize_over(Deserializer::new(&cont)){
-								Err(err) =>{
-									log(format!("Cannot Parse Configuration {}",err));
-									Err(Deserialization)
-								},
-								Ok(()) => Ok((config, false))
-							}
-						},
-				    }
-				},
+				Ok(_) => Ok(cont),
 				Err(err) => {
 					log(format!("Cannot Read Configuration content {}",err));
-					Err(FileError(err))
+					Err(err)
 				}
+			}
+		}
+	}
+}
+
+pub fn deserialize_config_from_string<'a,C >(file_buf : &str) -> Result<(C, bool) ,ConfigurationError> where C : Deserialize<'a> + DeserializeOver<'a> + Default{
+	let parser = Deserializer::new(&file_buf);
+	match C::deserialize(Deserializer::new(&file_buf)){
+		Ok(config) => Ok((config, true)),
+		Err(_) => {
+			let mut config = C::default();
+			match config.deserialize_over(parser){
+				Err(err) =>{
+					log(format!("Cannot Parse Configuration {}",err));
+					Err(Deserialization)
+				},
+				Ok(()) => Ok((config, false))
 			}
 		}
 	}
@@ -170,35 +174,39 @@ pub extern "C" fn getShadersConfiguration() -> *mut Shaders {
 	}
 }
 
-pub fn load_config<'a, P : AsRef<Path>, C> (path : P) -> C where C : Deserialize<'a> + DeserializeOver<'a> + Default + Serialize{
-	let config_res = read_config_from_file(&path);
+pub fn load_config<'a, P : AsRef<Path>, C> (path : P) -> C where C : DeserializeOwned + DeserializeOver<'a> + Default + Serialize{
+	let file_result = read_config_from_file(&path);
 	let mut backup_file = false;
-	let config = match config_res{
-	    Ok(conf) => {
-			if conf.1 == false{
-				log("Partial or partially invalid configuration found. Maybe older version?");
-				backup_file = true;
-			}
-			conf
-		},
-	    Err(err) => match err{
-	        Deserialization => {
-				backup_file = true;
-				(C::default(),false)
-			},
-	        FileError(err) => {
-				match err.kind() {
-					io::ErrorKind::NotFound => {
-						backup_file = false;
-						(C::default(),false)
-					}
-				    _ => {
+
+	let config = match file_result{
+		Ok(buf) => {
+			let config_res = deserialize_config_from_string(&buf);
+			match  config_res {
+				Ok(conf) => {
+					if conf.1 == false{
+						log("Partial or partially invalid configuration found. Maybe older version?");
 						backup_file = true;
-						(C::default(),false)
 					}
+					conf
+				},
+				Err(_) => {
+					backup_file = true;
+					(C::default(),false)
+				},
+			}
+		},
+		Err(err) => {
+			match err.kind() {
+				io::ErrorKind::NotFound => {
+					backup_file = false;
+					(C::default(),false)
+				},
+				_ => {
+					backup_file = true;
+					(C::default(),false)
 				}
 			}
-	    }
+		}
 	};
 	if config.1 == false {
 		if backup_file {
@@ -340,7 +348,7 @@ pub enum MoveCursor{
 #[unsafe(no_mangle)]
 pub extern "C" fn SetLogFile(file: *mut libc::FILE) -> Errors {
 	match CFile::wrap(file){
-		Err(err) => Errors::InvalidLog,
+		Err(_err) => Errors::InvalidLog,
 		Ok(file) => {
 			static_mut_insert(&raw mut LOGGER, file );
 			Errors::None
