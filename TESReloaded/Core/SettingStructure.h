@@ -7,14 +7,16 @@
 
 namespace ffi {
 
-enum class Errors {
-  None,
-  InvalidLog,
-};
-
 enum class Game {
   Oblivion,
   NewVegas,
+};
+
+enum class ShadowType : uint8_t {
+  DISABLED,
+  VSM,
+  ESM,
+  ESSM,
 };
 
 enum class MoveCursor {
@@ -27,6 +29,11 @@ enum class MoveCursor {
 enum class OperationSetting {
   Add,
   Sub,
+};
+
+enum class Errors {
+  None,
+  InvalidLog,
 };
 
 struct MainStruct {
@@ -165,7 +172,7 @@ struct ShadowFormsStruct {
 
 struct ShadowsExteriorStruct {
   bool Enabled;
-  uint8_t ShadowMode;
+  ShadowType ShadowMode;
   uint32_t ShadowMapResolution;
   float ShadowMapRadius;
   float ShadowMapFarPlane;
@@ -513,6 +520,6 @@ void IsEditorMode();
 
 Errors SetLogFile(FILE *file);
 
-} // extern "C"
+}  // extern "C"
 
-} // namespace ffi
+}  // namespace ffi

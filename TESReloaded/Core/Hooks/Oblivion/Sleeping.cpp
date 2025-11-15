@@ -1,4 +1,5 @@
 #include "Sleeping.h"
+#include <stdlib.h>
 
 int (__thiscall* ServeSentence)(PlayerCharacter*) = (int (__thiscall*)(PlayerCharacter*))Hooks::ServeSentence;
 int __fastcall ServeSentenceHook(PlayerCharacter* This, UInt32 edx) {
@@ -32,6 +33,23 @@ void __cdecl CloseSleepWaitMenuHook() {
 	if (Served) {
 		Served = false;
 		InterfaceManager->ShowMessageBox(*(const char**)0x00B38B30, (void*)0x00671600, *(const char**)0x00B38CF8, *(const char**)0x00B38D00);
+	}
+
+}
+
+void (__thiscall*  RestoreCamera)(PlayerCharacter* This) = (void (__thiscall* )(PlayerCharacter* )) 0x0066C600;
+static UInt32 kReturnRiseFromForunitre = 0x004AEB2A;
+__declspec(naked) void TestFixCamera(void){
+	__asm{
+		fldz
+		mov     edx, [esi]
+		fstp    dword ptr [esi+61Ch]
+		mov     eax, [edx+320h]
+	    mov     ecx, esi
+		call    eax
+		mov     ecx, esi
+		call    RestoreCamera
+		jmp [kReturnRiseFromForunitre]
 	}
 
 }

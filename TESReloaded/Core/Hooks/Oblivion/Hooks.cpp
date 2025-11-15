@@ -336,6 +336,7 @@ void AttachHooks() {
 		SafeWriteJump(0x004AEA1C, 0x004AEAEE); // Enables the Player to get into the bed
 		SafeWriteJump(0x004AE961, 0x004AEAEE); // Enables the Player to get into the bed when in prison
 		SafeWriteJump(0x00672BFF, 0x00672C18); // Enables the rest key when in prison
+		//SafeWriteJump(0x0066C600, 0x0066C629 );
 	}
 #ifdef EXPERIMENTAL_FEATURE
 	if (SettingsMain->Dodge.Enabled) {

@@ -10,3 +10,5 @@ bool __cdecl ProcessSleepWaitMenuHook();
 
 extern void(__cdecl* CloseSleepWaitMenu)();
 void __cdecl CloseSleepWaitMenuHook();
+
+void TestFixCamera(void);
